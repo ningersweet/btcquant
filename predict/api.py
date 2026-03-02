@@ -71,10 +71,14 @@ async def get_prediction(symbol: str = Query(default="BTCUSDT")):
             return {"code": 2002, "message": "No features computed", "data": None}
         
         latest_features = features_data["features"][-1]
-        feature_cols = features_data["feature_columns"]
+        
+        # 使用模型训练时的特征列
+        if not trainer.feature_columns:
+            return {"code": 2003, "message": "Model not loaded", "data": None}
         
         import numpy as np
-        feature_values = np.array([latest_features.get(c, 0) for c in feature_cols])
+        # 只使用模型训练时的特征
+        feature_values = np.array([latest_features.get(c, 0) for c in trainer.feature_columns])
         
         result = inference_service.predict(feature_values, current_price, timestamp)
         
