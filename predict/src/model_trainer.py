@@ -101,7 +101,8 @@ class ModelTrainer:
         X: np.ndarray,
         y: np.ndarray,
         weights: np.ndarray = None,
-        val_size: float = 0.1
+        val_size: float = 0.1,
+        custom_params: Dict = None
     ) -> Dict:
         """
         训练模型
@@ -111,6 +112,7 @@ class ModelTrainer:
             y: 标签矩阵
             weights: 样本权重
             val_size: 验证集比例
+            custom_params: 自定义模型参数（用于超参数优化）
             
         Returns:
             训练指标
@@ -126,7 +128,7 @@ class ModelTrainer:
         else:
             w_train = None
         
-        self.model = create_model()
+        self.model = create_model(custom_params)
         
         if w_train is not None and HAS_LIGHTGBM:
             self.model.fit(X_train, y_train, sample_weight=w_train)

@@ -35,6 +35,18 @@ class TrainRequest(BaseModel):
     val_end: Optional[str] = None
 
 
+class OptimizeRequest(BaseModel):
+    """超参数优化请求"""
+    train_start: str = "2019-01-01"
+    train_end: str = "2024-06-30"
+    val_start: str = "2024-07-01"
+    val_end: str = "2025-06-30"
+    test_start: str = "2025-07-01"
+    test_end: str = "2026-02-28"
+    n_trials: int = 50
+    timeout: int = 3600
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
@@ -86,6 +98,185 @@ async def get_prediction(symbol: str = Query(default="BTCUSDT")):
         
     except Exception as e:
         logger.error(f"Prediction failed: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"code": 1003, "message": str(e), "data": None}
+        )
+
+
+@app.post("/api/v1/train/optimize")
+async def optimize_hyperparameters(request: OptimizeRequest):
+    """
+    超参数优化
+    
+    使用 Optuna 自动搜索最佳超参数
+    """
+    try:
+        from .src.hyperparameter_tuner import HyperparameterTuner
+        from .src.label_generator import generate_labels
+        from datetime import datetime
+        
+        logger.info(f"Starting hyperparameter optimization")
+        logger.info(f"Train: {request.train_start} to {request.train_end}")
+        logger.info(f"Val: {request.val_start} to {request.val_end}")
+        logger.info(f"Test: {request.test_start} to {request.test_end}")
+        logger.info(f"Trials: {request.n_trials}, Timeout: {request.timeout}s")
+        
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            # 1. 获取训练数据
+            train_start_ts = int(pd.Timestamp(request.train_start).timestamp() * 1000)
+            train_end_ts = int(pd.Timestamp(request.train_end).timestamp() * 1000)
+            
+            logger.info(f"Fetching training data...")
+            train_klines_resp = await client.get(
+                f"{config.service.data_service_url}/api/v1/klines",
+                params={
+                    "symbol": "BTCUSDT",
+                    "interval": "1h",
+                    "start_time": train_start_ts,
+                    "end_time": train_end_ts,
+                    "limit": 1500
+                }
+            )
+            train_klines_data = train_klines_resp.json().get("data", [])
+            
+            # 2. 获取验证数据
+            val_start_ts = int(pd.Timestamp(request.val_start).timestamp() * 1000)
+            val_end_ts = int(pd.Timestamp(request.val_end).timestamp() * 1000)
+            
+            logger.info(f"Fetching validation data...")
+            val_klines_resp = await client.get(
+                f"{config.service.data_service_url}/api/v1/klines",
+                params={
+                    "symbol": "BTCUSDT",
+                    "interval": "1h",
+                    "start_time": val_start_ts,
+                    "end_time": val_end_ts,
+                    "limit": 1500
+                }
+            )
+            val_klines_data = val_klines_resp.json().get("data", [])
+            
+            if not train_klines_data or not val_klines_data:
+                return JSONResponse(
+                    status_code=400,
+                    content={"code": 1001, "message": "Insufficient data", "data": None}
+                )
+            
+            logger.info(f"Train klines: {len(train_klines_data)}, Val klines: {len(val_klines_data)}")
+            
+            # 3. 计算训练集特征
+            logger.info("Computing training features...")
+            train_features_resp = await client.post(
+                f"{config.service.features_service_url}/api/v1/features/compute",
+                json={"klines": train_klines_data},
+                timeout=120.0
+            )
+            
+            if train_features_resp.status_code != 200:
+                return JSONResponse(
+                    status_code=400,
+                    content={"code": 1002, "message": "Features computation failed", "data": None}
+                )
+            
+            train_features_data = train_features_resp.json().get("data", {})
+            
+            # 4. 计算验证集特征
+            logger.info("Computing validation features...")
+            val_features_resp = await client.post(
+                f"{config.service.features_service_url}/api/v1/features/compute",
+                json={"klines": val_klines_data},
+                timeout=120.0
+            )
+            
+            if val_features_resp.status_code != 200:
+                return JSONResponse(
+                    status_code=400,
+                    content={"code": 1002, "message": "Features computation failed", "data": None}
+                )
+            
+            val_features_data = val_features_resp.json().get("data", {})
+        
+        # 5. 构建训练集 DataFrame
+        train_klines_df = pd.DataFrame(train_klines_data)
+        train_features_df = pd.DataFrame(train_features_data["features"])
+        train_df = pd.merge(train_klines_df, train_features_df, on='timestamp', how='inner')
+        train_df = generate_labels(train_df, window=config.label.window_size)
+        
+        # 6. 构建验证集 DataFrame
+        val_klines_df = pd.DataFrame(val_klines_data)
+        val_features_df = pd.DataFrame(val_features_data["features"])
+        val_df = pd.merge(val_klines_df, val_features_df, on='timestamp', how='inner')
+        val_df = generate_labels(val_df, window=config.label.window_size)
+        
+        feature_columns = train_features_data["feature_columns"]
+        available_features = [col for col in feature_columns if col in train_df.columns and col in val_df.columns]
+        
+        logger.info(f"Using {len(available_features)} features")
+        
+        # 7. 准备数据
+        target_columns = ["y_rr", "y_sl_pct", "y_tp_pct"]
+        
+        train_clean = train_df.dropna(subset=available_features + target_columns)
+        val_clean = val_df.dropna(subset=available_features + target_columns)
+        
+        X_train = train_clean[available_features].values
+        y_train = train_clean[target_columns].values
+        X_val = val_clean[available_features].values
+        y_val = val_clean[target_columns].values
+        
+        from .src.label_generator import compute_sample_weights
+        weights_train = compute_sample_weights(train_clean["timestamp"])
+        
+        logger.info(f"Train samples: {len(X_train)}, Val samples: {len(X_val)}")
+        
+        # 8. 执行超参数优化
+        tuner = HyperparameterTuner(random_state=config.model.random_state)
+        optimization_result = tuner.optimize(
+            X_train, y_train, X_val, y_val,
+            weights_train=weights_train,
+            n_trials=request.n_trials,
+            timeout=request.timeout
+        )
+        
+        # 9. 使用最佳参数训练最终模型
+        logger.info("Training final model with best parameters...")
+        trainer.feature_columns = available_features
+        
+        # 合并训练集和验证集进行最终训练
+        X_full = np.vstack([X_train, X_val])
+        y_full = np.vstack([y_train, y_val])
+        weights_val = compute_sample_weights(val_clean["timestamp"])
+        weights_full = np.concatenate([weights_train, weights_val])
+        
+        final_metrics = trainer.train(
+            X_full, y_full,
+            weights=weights_full,
+            val_size=0.1,
+            custom_params=optimization_result['best_params']
+        )
+        
+        # 10. 保存模型
+        model_id = f"model_optimized_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        model_path = trainer.save(model_id)
+        
+        logger.info(f"Optimized model saved: {model_id}")
+        
+        return {
+            "code": 0,
+            "data": {
+                "model_id": model_id,
+                "model_path": model_path,
+                "optimization": optimization_result,
+                "final_metrics": final_metrics,
+                "train_samples": len(X_train),
+                "val_samples": len(X_val),
+                "feature_count": len(available_features)
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Optimization failed: {e}", exc_info=True)
         return JSONResponse(
             status_code=500,
             content={"code": 1003, "message": str(e), "data": None}
