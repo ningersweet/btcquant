@@ -3,6 +3,7 @@
 """
 
 import logging
+import asyncio
 from typing import Optional, List
 from datetime import datetime
 from fastapi import FastAPI, Query
@@ -10,6 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import httpx
 import pandas as pd
+import numpy as np
 
 from .config import config
 from .src.model_trainer import ModelTrainer
@@ -25,6 +27,88 @@ app = FastAPI(
 
 trainer = ModelTrainer()
 inference_service = InferenceService(trainer)
+
+
+async def fetch_all_klines(
+    client: httpx.AsyncClient,
+    symbol: str,
+    interval: str,
+    start_time: int,
+    end_time: int,
+    batch_size: int = 1500
+) -> List[dict]:
+    """
+    分批获取完整的历史 K 线数据
+    
+    Args:
+        client: HTTP 客户端
+        symbol: 交易对
+        interval: 时间间隔
+        start_time: 开始时间戳（毫秒）
+        end_time: 结束时间戳（毫秒）
+        batch_size: 每批数据量
+        
+    Returns:
+        完整的 K 线数据列表
+    """
+    all_data = []
+    current_time = start_time
+    batch_count = 0
+    
+    # 计算预期批次数
+    time_diff_hours = (end_time - start_time) / (1000 * 3600)
+    expected_batches = int(time_diff_hours / batch_size) + 1
+    
+    logger.info(f"Fetching data from {pd.Timestamp(start_time, unit='ms')} to {pd.Timestamp(end_time, unit='ms')}")
+    logger.info(f"Expected batches: ~{expected_batches}, batch_size: {batch_size}")
+    
+    while current_time < end_time:
+        batch_count += 1
+        
+        try:
+            response = await client.get(
+                f"{config.service.data_service_url}/api/v1/klines",
+                params={
+                    "symbol": symbol,
+                    "interval": interval,
+                    "start_time": current_time,
+                    "end_time": end_time,
+                    "limit": batch_size
+                },
+                timeout=30.0
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"Batch {batch_count} failed: HTTP {response.status_code}")
+                break
+            
+            batch_data = response.json().get("data", [])
+            
+            if not batch_data:
+                logger.info(f"No more data at batch {batch_count}")
+                break
+            
+            all_data.extend(batch_data)
+            
+            # 更新时间戳到下一批
+            last_timestamp = batch_data[-1]["timestamp"]
+            current_time = last_timestamp + 3600000  # +1 小时（毫秒）
+            
+            # 避免请求过快
+            if batch_count % 10 == 0:
+                logger.info(f"Fetched {len(all_data)} records in {batch_count} batches...")
+                await asyncio.sleep(0.1)
+            
+            # 如果这批数据少于 batch_size，说明已经到达终点
+            if len(batch_data) < batch_size:
+                break
+                
+        except Exception as e:
+            logger.error(f"Error fetching batch {batch_count}: {e}")
+            break
+    
+    logger.info(f"Total fetched: {len(all_data)} records in {batch_count} batches")
+    return all_data
 
 
 class TrainRequest(BaseModel):
@@ -124,39 +208,33 @@ async def optimize_hyperparameters(request: OptimizeRequest):
         logger.info(f"Trials: {request.n_trials}, Timeout: {request.timeout}s")
         
         async with httpx.AsyncClient(timeout=300.0) as client:
-            # 1. 获取训练数据
+            # 1. 获取训练数据（分批获取）
             train_start_ts = int(pd.Timestamp(request.train_start).timestamp() * 1000)
             train_end_ts = int(pd.Timestamp(request.train_end).timestamp() * 1000)
             
             logger.info(f"Fetching training data...")
-            train_klines_resp = await client.get(
-                f"{config.service.data_service_url}/api/v1/klines",
-                params={
-                    "symbol": "BTCUSDT",
-                    "interval": "1h",
-                    "start_time": train_start_ts,
-                    "end_time": train_end_ts,
-                    "limit": 1500
-                }
+            train_klines_data = await fetch_all_klines(
+                client=client,
+                symbol="BTCUSDT",
+                interval="1h",
+                start_time=train_start_ts,
+                end_time=train_end_ts,
+                batch_size=1500
             )
-            train_klines_data = train_klines_resp.json().get("data", [])
             
-            # 2. 获取验证数据
+            # 2. 获取验证数据（分批获取）
             val_start_ts = int(pd.Timestamp(request.val_start).timestamp() * 1000)
             val_end_ts = int(pd.Timestamp(request.val_end).timestamp() * 1000)
             
             logger.info(f"Fetching validation data...")
-            val_klines_resp = await client.get(
-                f"{config.service.data_service_url}/api/v1/klines",
-                params={
-                    "symbol": "BTCUSDT",
-                    "interval": "1h",
-                    "start_time": val_start_ts,
-                    "end_time": val_end_ts,
-                    "limit": 1500
-                }
+            val_klines_data = await fetch_all_klines(
+                client=client,
+                symbol="BTCUSDT",
+                interval="1h",
+                start_time=val_start_ts,
+                end_time=val_end_ts,
+                batch_size=1500
             )
-            val_klines_data = val_klines_resp.json().get("data", [])
             
             if not train_klines_data or not val_klines_data:
                 return JSONResponse(
@@ -303,32 +381,15 @@ async def train_model(request: TrainRequest):
             
             logger.info(f"Fetching klines from {train_start_ts} to {train_end_ts}")
             
-            # 获取 K 线数据
-            klines_url = f"{config.service.data_service_url}/api/v1/klines"
-            klines_params = {
-                "symbol": "BTCUSDT",
-                "interval": "1h",
-                "start_time": train_start_ts,
-                "end_time": train_end_ts,
-                "limit": 1500  # 修改为合理的值
-            }
-            
-            logger.info(f"Requesting: {klines_url} with params: {klines_params}")
-            
-            klines_resp = await client.get(klines_url, params=klines_params)
-            klines_json = klines_resp.json()
-            
-            logger.info(f"Klines response status: {klines_resp.status_code}")
-            logger.info(f"Klines response keys: {klines_json.keys() if isinstance(klines_json, dict) else 'not a dict'}")
-            
-            if "code" in klines_json and klines_json["code"] != 0:
-                logger.error(f"Data service error: {klines_json}")
-                return JSONResponse(
-                    status_code=400,
-                    content={"code": klines_json["code"], "message": "Data service error", "data": None}
-                )
-            
-            klines_data = klines_json.get("data", [])
+            # 使用分批获取
+            klines_data = await fetch_all_klines(
+                client=client,
+                symbol="BTCUSDT",
+                interval="1h",
+                start_time=train_start_ts,
+                end_time=train_end_ts,
+                batch_size=1500
+            )
             
             if not klines_data:
                 logger.error("No klines data returned")
