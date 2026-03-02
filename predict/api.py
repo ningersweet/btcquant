@@ -114,7 +114,7 @@ async def train_model(request: TrainRequest):
                 "interval": "1h",
                 "start_time": train_start_ts,
                 "end_time": train_end_ts,
-                "limit": 50000
+                "limit": 1500  # 修改为合理的值
             }
             
             logger.info(f"Requesting: {klines_url} with params: {klines_params}")
