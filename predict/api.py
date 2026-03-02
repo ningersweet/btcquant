@@ -196,7 +196,16 @@ async def train_model(request: TrainRequest):
         df = generate_labels(df, window=config.label.window_size)
         
         # 5. 准备训练数据
-        X, y, weights = trainer.prepare_data(df, feature_columns)
+        # 只使用实际存在的特征列
+        available_features = [col for col in feature_columns if col in df.columns]
+        missing_features = [col for col in feature_columns if col not in df.columns]
+        
+        if missing_features:
+            logger.warning(f"Missing features: {missing_features}")
+        
+        logger.info(f"Using {len(available_features)} features out of {len(feature_columns)}")
+        
+        X, y, weights = trainer.prepare_data(df, available_features)
         
         logger.info(f"Training data prepared: X={X.shape}, y={y.shape}")
         
