@@ -12,8 +12,8 @@ volumes:
 services:
   data-service:
     build:
-      context: ./data
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: data/Dockerfile
     container_name: btc_quant_data_service
     ports:
       - "8001:8001"
@@ -48,8 +48,8 @@ services:
 
   features-service:
     build:
-      context: ./features
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: features/Dockerfile
     container_name: btc_quant_features_service
     ports:
       - "8002:8002"
@@ -79,8 +79,8 @@ services:
 
   predict-service:
     build:
-      context: ./predict
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: predict/Dockerfile
     container_name: btc_quant_predict_service
     ports:
       - "8003:8003"
