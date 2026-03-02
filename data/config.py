@@ -5,10 +5,15 @@
 """
 
 import os
-import sys
-sys.path.insert(0, str(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from common.config_loader import get_config, get_section
+try:
+    from common.config_loader import get_config, get_section
+except ImportError:
+    # 如果无法导入，使用默认值
+    def get_config(key, default=None):
+        return default
+    def get_section(section):
+        return {}
 
 
 class BinanceConfig:
@@ -44,7 +49,7 @@ class DatabaseConfig:
     
     @property
     def db_path(self) -> str:
-        return get_config("data.database.db_path", "/app/data/btc_quant.db")
+        return os.getenv("DB_PATH", get_config("data.database.db_path", "/app/data_storage/btc_quant.db"))
     
     @property
     def echo(self) -> bool:
