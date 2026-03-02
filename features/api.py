@@ -69,7 +69,12 @@ async def compute_features_api(request: ComputeRequest):
         output_cols = ["timestamp"] + feature_cols
         available_cols = [c for c in output_cols if c in result_df.columns]
         
-        features = result_df[available_cols].to_dict(orient="records")
+        # 处理 NaN 和 Inf 值
+        import numpy as np
+        result_df = result_df[available_cols].replace([np.inf, -np.inf], np.nan)
+        result_df = result_df.fillna(0)  # 将 NaN 替换为 0
+        
+        features = result_df.to_dict(orient="records")
         
         return {
             "code": 0,
@@ -80,7 +85,7 @@ async def compute_features_api(request: ComputeRequest):
         }
         
     except Exception as e:
-        logger.error(f"Failed to compute features: {e}")
+        logger.error(f"Failed to compute features: {e}", exc_info=True)
         return JSONResponse(
             status_code=500,
             content={"code": 1003, "message": str(e), "data": None}
