@@ -2,8 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 安装 curl 用于健康检查
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+# 安装 curl 和 LightGBM 所需的系统依赖
+RUN apt-get update && apt-get install -y curl libgomp1 && rm -rf /var/lib/apt/lists/*
 
 # 复制依赖文件并安装
 COPY predict/requirements.txt ./predict/
