@@ -176,10 +176,20 @@ async def train_model(request: TrainRequest):
             features_data = features_json.get("data", {})
         
         # 3. 构建 DataFrame
-        df = pd.DataFrame(features_data["features"])
+        features_list = features_data["features"]
         feature_columns = features_data["feature_columns"]
         
-        logger.info(f"Features computed: {len(feature_columns)} columns, {len(df)} rows")
+        logger.info(f"Features computed: {len(feature_columns)} columns, {len(features_list)} rows")
+        
+        # 合并原始 K 线数据和特征数据
+        klines_df = pd.DataFrame(klines_data)
+        features_df = pd.DataFrame(features_list)
+        
+        # 按 timestamp 合并
+        df = pd.merge(klines_df, features_df, on='timestamp', how='inner')
+        
+        logger.info(f"Merged dataframe columns: {df.columns.tolist()}")
+        logger.info(f"Merged dataframe shape: {df.shape}")
         
         # 4. 生成标签
         logger.info("Generating labels...")
