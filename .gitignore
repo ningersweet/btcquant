@@ -1,0 +1,44 @@
+# 敏感数据
+*.db
+.env
+
+# 模型文件
+*.pkl
+*.joblib
+predict/models/*
+!predict/models/.gitkeep
+
+# 数据文件
+*.parquet
+*.csv
+
+# 日志
+logs/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Docker
+.docker/
+
+# macOS
+.DS_Store
+
+# 临时文件
+*.tmp
+*.temp
+
+config.yaml
