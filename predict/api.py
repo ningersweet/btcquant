@@ -94,16 +94,86 @@ async def train_model(request: TrainRequest):
     触发模型训练
     """
     try:
+        from .src.label_generator import generate_labels
+        from datetime import datetime
+        
+        logger.info(f"Starting training: {request.train_start} to {request.train_end}")
+        
+        # 1. 获取训练数据
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            # 转换日期为时间戳
+            train_start_ts = int(pd.Timestamp(request.train_start).timestamp() * 1000)
+            train_end_ts = int(pd.Timestamp(request.train_end).timestamp() * 1000)
+            
+            logger.info(f"Fetching klines from {train_start_ts} to {train_end_ts}")
+            
+            # 获取 K 线数据
+            klines_resp = await client.get(
+                f"{config.service.data_service_url}/api/v1/klines",
+                params={
+                    "symbol": "BTCUSDT",
+                    "interval": "1h",
+                    "start_time": train_start_ts,
+                    "end_time": train_end_ts,
+                    "limit": 50000
+                }
+            )
+            klines_data = klines_resp.json()["data"]
+            
+            if not klines_data:
+                return JSONResponse(
+                    status_code=400,
+                    content={"code": 1001, "message": "No training data available", "data": None}
+                )
+            
+            logger.info(f"Fetched {len(klines_data)} klines")
+            
+            # 2. 计算特征
+            logger.info("Computing features...")
+            features_resp = await client.post(
+                f"{config.service.features_service_url}/api/v1/features/compute",
+                json={"klines": klines_data}
+            )
+            features_data = features_resp.json()["data"]
+        
+        # 3. 构建 DataFrame
+        df = pd.DataFrame(features_data["features"])
+        feature_columns = features_data["feature_columns"]
+        
+        logger.info(f"Features computed: {len(feature_columns)} columns, {len(df)} rows")
+        
+        # 4. 生成标签
+        logger.info("Generating labels...")
+        df = generate_labels(df, window=config.label.window_size)
+        
+        # 5. 准备训练数据
+        X, y, weights = trainer.prepare_data(df, feature_columns)
+        
+        logger.info(f"Training data prepared: X={X.shape}, y={y.shape}")
+        
+        # 6. 训练模型
+        logger.info("Training model...")
+        metrics = trainer.train(X, y, weights, val_size=0.1)
+        
+        # 7. 保存模型
+        model_id = f"model_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        model_path = trainer.save(model_id)
+        
+        logger.info(f"Model saved: {model_id}")
+        
         return {
             "code": 0,
             "data": {
-                "message": "Training endpoint placeholder",
-                "train_start": request.train_start,
-                "train_end": request.train_end
+                "model_id": model_id,
+                "model_path": model_path,
+                "metrics": metrics,
+                "train_samples": len(X),
+                "feature_count": len(feature_columns)
             }
         }
+        
     except Exception as e:
-        logger.error(f"Training failed: {e}")
+        logger.error(f"Training failed: {e}", exc_info=True)
         return JSONResponse(
             status_code=500,
             content={"code": 1003, "message": str(e), "data": None}
