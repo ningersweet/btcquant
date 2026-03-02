@@ -51,11 +51,12 @@ async def get_klines(
     """
     try:
         if start_time is None or end_time is None:
+            # 没有指定时间范围，返回最新的 limit 条
             klines = data_service.get_latest_klines(symbol, interval, limit)
         else:
+            # 指定了时间范围，返回该范围内的所有数据
             klines = data_service.get_klines(symbol, interval, start_time, end_time)
-            if len(klines) > limit:
-                klines = klines[-limit:]
+            # 注意：不再限制返回数量，返回时间范围内的所有数据
         
         data = [k.to_dict() for k in klines]
         
