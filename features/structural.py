@@ -101,12 +101,12 @@ class TimeFeature(BaseFeature):
         else:
             dt = df.index
         
-        result["hour"] = dt.hour / 24
-        result["day_of_week"] = dt.dayofweek / 7
-        result["is_weekend"] = (dt.dayofweek >= 5).astype(int)
+        result["hour"] = dt.dt.hour / 24
+        result["day_of_week"] = dt.dt.dayofweek / 7
+        result["is_weekend"] = (dt.dt.dayofweek >= 5).astype(int)
         
-        result["hour_sin"] = np.sin(2 * np.pi * dt.hour / 24)
-        result["hour_cos"] = np.cos(2 * np.pi * dt.hour / 24)
+        result["hour_sin"] = np.sin(2 * np.pi * dt.dt.hour / 24)
+        result["hour_cos"] = np.cos(2 * np.pi * dt.dt.hour / 24)
         
         return result
 
