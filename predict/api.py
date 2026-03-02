@@ -122,9 +122,11 @@ async def train_model(request: TrainRequest):
             klines_resp = await client.get(klines_url, params=klines_params)
             klines_json = klines_resp.json()
             
-            logger.info(f"Klines response keys: {klines_json.keys()}")
+            logger.info(f"Klines response status: {klines_resp.status_code}")
+            logger.info(f"Klines response keys: {klines_json.keys() if isinstance(klines_json, dict) else 'not a dict'}")
             
             if "code" in klines_json and klines_json["code"] != 0:
+                logger.error(f"Data service error: {klines_json}")
                 return JSONResponse(
                     status_code=400,
                     content={"code": klines_json["code"], "message": "Data service error", "data": None}
@@ -133,6 +135,7 @@ async def train_model(request: TrainRequest):
             klines_data = klines_json.get("data", [])
             
             if not klines_data:
+                logger.error("No klines data returned")
                 return JSONResponse(
                     status_code=400,
                     content={"code": 1001, "message": "No training data available", "data": None}
@@ -142,10 +145,26 @@ async def train_model(request: TrainRequest):
             
             # 2. 计算特征
             logger.info("Computing features...")
+            
+            # 构造正确的请求体
+            features_request = {"klines": klines_data}
+            logger.info(f"Features request has {len(klines_data)} klines")
+            
             features_resp = await client.post(
                 f"{config.service.features_service_url}/api/v1/features/compute",
-                json={"klines": klines_data}
+                json=features_request,
+                timeout=120.0
             )
+            
+            logger.info(f"Features response status: {features_resp.status_code}")
+            
+            if features_resp.status_code != 200:
+                logger.error(f"Features service error: status={features_resp.status_code}, body={features_resp.text[:500]}")
+                return JSONResponse(
+                    status_code=400,
+                    content={"code": 1002, "message": f"Features service error: {features_resp.status_code}", "data": None}
+                )
+            
             features_json = features_resp.json()
             
             if "code" in features_json and features_json["code"] != 0:
