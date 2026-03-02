@@ -12,8 +12,8 @@ volumes:
 services:
   data-service:
     build:
-      context: .
-      dockerfile: Dockerfile.data
+      context: ./data
+      dockerfile: Dockerfile
     container_name: btc_quant_data_service
     ports:
       - "8001:8001"
@@ -46,69 +46,72 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # features-service:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.features
-  #   container_name: btc_quant_features_service
-  #   ports:
-  #     - "8002:8002"
-  #   networks:
-  #     - btc_quant_net
-  #   depends_on:
-  #     - data-service
-  #   environment:
-  #     - CONFIG_PATH=/app/config.yaml
-  #   restart: unless-stopped
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         cpus: '0.25'
-  #         memory: 512M
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #   logging:
-  #     driver: "json-file"
-  #     options:
-  #       max-size: "10m"
-  #       max-file: "3"
+  features-service:
+    build:
+      context: ./features
+      dockerfile: Dockerfile
+    container_name: btc_quant_features_service
+    ports:
+      - "8002:8002"
+    networks:
+      - btc_quant_net
+    depends_on:
+      - data-service
+    environment:
+      - CONFIG_PATH=/app/config.yaml
+      - DATA_SERVICE_URL=http://data-service:8001
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  # predict-service:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.predict
-  #   container_name: btc_quant_predict_service
-  #   ports:
-  #     - "8003:8003"
-  #   volumes:
-  #     - models_volume:/app/models
-  #     - logs_volume:/app/logs
-  #   networks:
-  #     - btc_quant_net
-  #   depends_on:
-  #     - data-service
-  #     - features-service
-  #   environment:
-  #     - CONFIG_PATH=/app/config.yaml
-  #   restart: unless-stopped
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         cpus: '0.25'
-  #         memory: 512M
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #   logging:
-  #     driver: "json-file"
-  #     options:
-  #       max-size: "10m"
-  #       max-file: "3"
+  predict-service:
+    build:
+      context: ./predict
+      dockerfile: Dockerfile
+    container_name: btc_quant_predict_service
+    ports:
+      - "8003:8003"
+    volumes:
+      - models_volume:/app/models
+      - logs_volume:/app/logs
+    networks:
+      - btc_quant_net
+    depends_on:
+      - data-service
+      - features-service
+    environment:
+      - CONFIG_PATH=/app/config.yaml
+      - DATA_SERVICE_URL=http://data-service:8001
+      - FEATURES_SERVICE_URL=http://features-service:8002
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # strategy-service:
   #   build:
