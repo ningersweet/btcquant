@@ -112,6 +112,7 @@ async def optimize_hyperparameters(request: OptimizeRequest):
     使用 Optuna 自动搜索最佳超参数
     """
     try:
+        import numpy as np
         from .src.hyperparameter_tuner import HyperparameterTuner
         from .src.label_generator import generate_labels
         from datetime import datetime
