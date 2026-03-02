@@ -108,17 +108,29 @@ async def train_model(request: TrainRequest):
             logger.info(f"Fetching klines from {train_start_ts} to {train_end_ts}")
             
             # 获取 K 线数据
-            klines_resp = await client.get(
-                f"{config.service.data_service_url}/api/v1/klines",
-                params={
-                    "symbol": "BTCUSDT",
-                    "interval": "1h",
-                    "start_time": train_start_ts,
-                    "end_time": train_end_ts,
-                    "limit": 50000
-                }
-            )
-            klines_data = klines_resp.json()["data"]
+            klines_url = f"{config.service.data_service_url}/api/v1/klines"
+            klines_params = {
+                "symbol": "BTCUSDT",
+                "interval": "1h",
+                "start_time": train_start_ts,
+                "end_time": train_end_ts,
+                "limit": 50000
+            }
+            
+            logger.info(f"Requesting: {klines_url} with params: {klines_params}")
+            
+            klines_resp = await client.get(klines_url, params=klines_params)
+            klines_json = klines_resp.json()
+            
+            logger.info(f"Klines response keys: {klines_json.keys()}")
+            
+            if "code" in klines_json and klines_json["code"] != 0:
+                return JSONResponse(
+                    status_code=400,
+                    content={"code": klines_json["code"], "message": "Data service error", "data": None}
+                )
+            
+            klines_data = klines_json.get("data", [])
             
             if not klines_data:
                 return JSONResponse(
@@ -134,7 +146,15 @@ async def train_model(request: TrainRequest):
                 f"{config.service.features_service_url}/api/v1/features/compute",
                 json={"klines": klines_data}
             )
-            features_data = features_resp.json()["data"]
+            features_json = features_resp.json()
+            
+            if "code" in features_json and features_json["code"] != 0:
+                return JSONResponse(
+                    status_code=400,
+                    content={"code": features_json["code"], "message": "Features service error", "data": None}
+                )
+            
+            features_data = features_json.get("data", {})
         
         # 3. 构建 DataFrame
         df = pd.DataFrame(features_data["features"])
