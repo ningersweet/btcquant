@@ -1,0 +1,107 @@
+# BTC Quant 系统配置文件示例
+# 复制此文件为 config.yaml 并根据实际情况修改
+
+# 数据服务配置
+data:
+  symbol: "BTCUSDT"
+  interval: "5m"  # 5分钟K线
+  host: "0.0.0.0"
+  port: 8001
+  
+  binance:
+    base_url: "https://fapi.binance.com"
+    testnet_url: "https://testnet.binancefuture.com"
+    use_testnet: false
+    max_klines_per_request: 1500
+    request_timeout: 30
+    retry_count: 3
+    retry_delay: 1.0
+  
+  database:
+    db_path: "/app/data_storage/btc_quant.db"
+    echo: false
+
+# 特征工程服务配置
+features:
+  host: "0.0.0.0"
+  port: 8002
+  data_service_url: "http://data-service:8001"
+  
+  technical:
+    ema_periods: [9, 21, 50]
+    rsi_period: 14
+    macd_fast: 12
+    macd_slow: 26
+    macd_signal: 9
+    atr_period: 14
+    bb_period: 20
+    bb_std: 2.0
+    obv_ema_period: 20
+  
+  structural:
+    lookback_periods: [5, 10, 20]
+    return_periods: [1, 5, 10]
+    round_number_base: 1000
+
+# 预测服务配置
+predict:
+  host: "0.0.0.0"
+  port: 8000
+  model_path: "/app/models"
+  data_service_url: "http://localhost:8001"
+  features_service_url: "http://localhost:8002"
+  
+  # TCN模型配置
+  model:
+    input_dim: 5
+    channels: 64
+    num_layers: 8
+    kernel_size: 3
+    dropout: 0.2
+  
+  # 标签生成配置
+  label:
+    alpha: 0.0015  # 入场缓冲系数
+    gamma: 0.0040  # 止盈缓冲系数
+    beta: 0.0025   # 止损缓冲系数
+    theta_min: 0.0100  # 最小净利阈值
+    K: 12  # 预测窗口长度
+  
+  # 训练配置
+  training:
+    batch_size: 256
+    learning_rate: 0.001
+    epochs: 50
+    early_stopping_patience: 10
+    lambda_cls: 1.0
+    lambda_reg: 0.5
+    device: "cpu"  # cpu 或 cuda
+  
+  # 数据配置
+  data:
+    window_size: 288  # 24小时
+    interval: "5m"
+    start_date: "2019-01-01"
+    train_ratio: 0.7
+    val_ratio: 0.15
+    test_ratio: 0.15
+
+# 策略服务配置
+strategy:
+  host: "0.0.0.0"
+  port: 8004
+  predict_service_url: "http://predict-service:8000"
+  data_service_url: "http://data-service:8001"
+  
+  trading:
+    mode: "backtest"  # backtest / paper / live
+    risk_amount: 100
+    min_confidence: 0.65
+    min_space: 0.01
+    leverage: 20
+
+# 评估模块配置
+evaluation:
+  risk_free_rate: 0.02
+  trading_days_per_year: 365
+  hours_per_day: 24
