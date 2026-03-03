@@ -37,7 +37,7 @@ def fetch_from_database(
     db_path: str = "/Users/lemonshwang/project/btc_quant/data_storage/btc_quant.db",
     symbol: str = "BTCUSDT",
     interval: str = "5m",
-    start_date: str = "2019-09-01"
+    start_date: str = "2019-01-01"
 ):
     """
     直接从SQLite数据库读取数据
