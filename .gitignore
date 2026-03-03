@@ -54,3 +54,4 @@ volumes/
 # 测试文件
 test_*.py
 *_test.py
+config.yaml
