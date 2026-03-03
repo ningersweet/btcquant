@@ -53,6 +53,21 @@ class LabelConfig:
     @property
     def decay_lambda(self) -> float:
         return get_config("predict.label.decay_lambda", 0.00095)
+    
+    @property
+    def min_trend_strength(self) -> float:
+        """趋势强度最低阈值，低于此值视为噪声不生成标签"""
+        return get_config("predict.label.min_trend_strength", 0.005)
+    
+    @property
+    def rr_clip_range(self) -> float:
+        """盈亏比截断范围 [-rr_clip_range, rr_clip_range]"""
+        return get_config("predict.label.rr_clip_range", 10.0)
+    
+    @property
+    def min_sl_pct_floor(self) -> float:
+        """止损百分比最小值，防止除零产生极端 RR"""
+        return get_config("predict.label.min_sl_pct_floor", 0.001)
 
 
 class ValidationConfig:

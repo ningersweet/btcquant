@@ -69,12 +69,15 @@ async def compute_features_api(request: ComputeRequest):
         output_cols = ["timestamp"] + feature_cols
         available_cols = [c for c in output_cols if c in result_df.columns]
         
-        # 处理 NaN 和 Inf 值
         import numpy as np
         result_df = result_df[available_cols].replace([np.inf, -np.inf], np.nan)
-        result_df = result_df.fillna(0)  # 将 NaN 替换为 0
         
+        # 保留 NaN（序列化为 JSON null），让 LightGBM 原生处理缺失值
         features = result_df.to_dict(orient="records")
+        for record in features:
+            for key, val in record.items():
+                if isinstance(val, float) and val != val:
+                    record[key] = None
         
         return {
             "code": 0,

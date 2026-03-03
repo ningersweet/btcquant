@@ -168,13 +168,14 @@ async def get_prediction(symbol: str = Query(default="BTCUSDT")):
         
         latest_features = features_data["features"][-1]
         
-        # 使用模型训练时的特征列
         if not trainer.feature_columns:
             return {"code": 2003, "message": "Model not loaded", "data": None}
         
         import numpy as np
-        # 只使用模型训练时的特征
-        feature_values = np.array([latest_features.get(c, 0) for c in trainer.feature_columns])
+        feature_values = np.array(
+            [latest_features.get(c, np.nan) for c in trainer.feature_columns],
+            dtype=np.float64
+        )
         
         result = inference_service.predict(feature_values, current_price, timestamp)
         
@@ -296,8 +297,8 @@ async def optimize_hyperparameters(request: OptimizeRequest):
         # 7. 准备数据
         target_columns = ["y_rr", "y_sl_pct", "y_tp_pct"]
         
-        train_clean = train_df.dropna(subset=available_features + target_columns)
-        val_clean = val_df.dropna(subset=available_features + target_columns)
+        train_clean = train_df.dropna(subset=target_columns)
+        val_clean = val_df.dropna(subset=target_columns)
         
         X_train = train_clean[available_features].values
         y_train = train_clean[target_columns].values
