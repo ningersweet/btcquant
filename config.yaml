@@ -1,0 +1,90 @@
+# BTC Quant 系统配置文件
+
+# 数据服务配置
+data:
+  symbol: "BTCUSDT"
+  interval: "1h"
+  host: "0.0.0.0"
+  port: 8001
+  
+  binance:
+    base_url: "https://fapi.binance.com"
+    testnet_url: "https://testnet.binancefuture.com"
+    use_testnet: false
+    max_klines_per_request: 1500
+    request_timeout: 30
+    retry_count: 3
+    retry_delay: 1.0
+  
+  database:
+    db_path: "/app/data/btc_quant.db"
+    echo: false
+
+# 特征工程服务配置
+features:
+  host: "0.0.0.0"
+  port: 8002
+  data_service_url: "http://data-service:8001"
+  
+  technical:
+    ema_periods: [9, 21, 50]
+    rsi_period: 14
+    macd_fast: 12
+    macd_slow: 26
+    macd_signal: 9
+    atr_period: 14
+    bb_period: 20
+    bb_std: 2.0
+    obv_ema_period: 20
+  
+  structural:
+    lookback_periods: [5, 10, 20]
+    return_periods: [1, 5, 10]
+    round_number_base: 1000
+
+# 预测服务配置
+predict:
+  host: "0.0.0.0"
+  port: 8003
+  model_path: "/app/models"
+  data_service_url: "http://data-service:8001"
+  features_service_url: "http://features-service:8002"
+  
+  model:
+    n_estimators: 500
+    max_depth: 6
+    min_child_samples: 50
+    subsample: 0.8
+    colsample_bytree: 0.8
+    learning_rate: 0.05
+    random_state: 42
+  
+  label:
+    window_size: 1
+    decay_lambda: 0.00095
+  
+  validation:
+    min_rr: 1.5
+    max_sl_pct: 0.05
+    min_sl_pct: 0.001
+
+# 策略服务配置
+strategy:
+  host: "0.0.0.0"
+  port: 8004
+  predict_service_url: "http://predict-service:8003"
+  data_service_url: "http://data-service:8001"
+  
+  trading:
+    mode: "backtest"  # backtest / paper / live
+    risk_amount: 100
+    min_rr_threshold: 1.5
+    max_sl_pct: 0.05
+    min_sl_pct: 0.001
+    leverage: 20
+
+# 评估模块配置
+evaluation:
+  risk_free_rate: 0.02
+  trading_days_per_year: 365
+  hours_per_day: 24

@@ -1,174 +1,261 @@
 """
-推理服务模块
+推理服务
+
+提供模型推理接口
 """
 
-import logging
-from dataclasses import dataclass
-from typing import Optional
+import torch
 import numpy as np
+import pandas as pd
+from pathlib import Path
+from typing import Dict, Tuple, Optional
+import logging
 
-from ..config import config
-from .model_trainer import ModelTrainer
+try:
+    import onnxruntime as ort
+    ONNX_AVAILABLE = True
+except ImportError:
+    ONNX_AVAILABLE = False
+    ort = None
+
+from .tcn_model import TCNModel
+from .data_loader import normalize_inference_data
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class PredictionResult:
-    """预测结果"""
-    valid: bool
-    signal: str
-    rr_score: float
-    entry_price: float
-    sl_price: float
-    tp_price: float
-    sl_pct: float
-    tp_pct: float
-    timestamp: int
+class ModelInference:
+    """模型推理器"""
     
-    def to_dict(self) -> dict:
-        return {
-            "valid": self.valid,
-            "signal": self.signal,
-            "rr_score": round(self.rr_score, 4),
-            "entry_price": round(self.entry_price, 2),
-            "sl_price": round(self.sl_price, 2),
-            "tp_price": round(self.tp_price, 2),
-            "sl_pct": round(self.sl_pct, 6),
-            "tp_pct": round(self.tp_pct, 6),
-            "timestamp": self.timestamp
-        }
-
-
-class InferenceService:
-    """推理服务"""
+    def __init__(
+        self,
+        model_path: Path,
+        device: str = 'cpu',
+        use_onnx: bool = True
+    ):
+        """
+        初始化推理器
+        
+        Args:
+            model_path: 模型路径（.pt或.onnx）
+            device: 设备
+            use_onnx: 是否使用ONNX Runtime（推荐，速度快3-5倍）
+        """
+        self.device = device
+        self.use_onnx = use_onnx and ONNX_AVAILABLE
+        
+        if self.use_onnx and model_path.suffix == '.onnx':
+            # 使用ONNX Runtime
+            if not ONNX_AVAILABLE:
+                logger.warning("ONNX Runtime not available, falling back to PyTorch")
+                self.model = self._load_pytorch_model(model_path.with_suffix('.pt'))
+                self.session = None
+            else:
+                self.session = ort.InferenceSession(
+                    str(model_path),
+                    providers=['CPUExecutionProvider']
+                )
+                self.model = None
+                logger.info(f"ONNX model loaded from {model_path}")
+        else:
+            # 使用PyTorch
+            self.model = self._load_pytorch_model(model_path)
+            self.session = None
+            logger.info(f"PyTorch model loaded from {model_path}")
     
-    def __init__(self, trainer: ModelTrainer = None):
-        self.trainer = trainer or ModelTrainer()
-        self.min_rr = config.validation.min_rr
-        self.max_sl_pct = config.validation.max_sl_pct
-        self.min_sl_pct = config.validation.min_sl_pct
+    def _load_pytorch_model(self, model_path: Path) -> TCNModel:
+        """加载PyTorch模型"""
+        checkpoint = torch.load(model_path, map_location=self.device)
+        
+        # 从checkpoint中获取模型配置（如果有）
+        from .tcn_model import create_tcn_model
+        model = create_tcn_model()
+        model.load_state_dict(checkpoint['model_state_dict'])
+        model.eval()
+        model.to(self.device)
+        
+        return model
     
     def predict(
         self,
-        features: np.ndarray,
-        current_price: float,
-        timestamp: int
-    ) -> PredictionResult:
+        klines: pd.DataFrame,
+        window_size: int = 288
+    ) -> Dict:
         """
-        执行预测
+        预测
         
         Args:
-            features: 特征向量
-            current_price: 当前价格
-            timestamp: 时间戳
+            klines: 最近的K线数据（至少window_size根）
+            window_size: 窗口大小
             
         Returns:
-            预测结果
+            预测结果字典
         """
-        if self.trainer.model is None:
-            return self._invalid_result(current_price, timestamp, "Model not loaded")
+        if len(klines) < window_size:
+            raise ValueError(f"Need at least {window_size} K-lines, got {len(klines)}")
         
-        raw_output = self.trainer.model.predict(features.reshape(1, -1))[0]
+        # 提取最近的window_size根K线
+        recent_klines = klines.iloc[-window_size:]
         
-        return self.post_process(raw_output, current_price, timestamp)
+        # 准备输入数据
+        feature_cols = ['open', 'high', 'low', 'close', 'volume']
+        x = recent_klines[feature_cols].values
+        
+        # 标准化
+        x_norm = normalize_inference_data(x)
+        
+        # 推理
+        if self.use_onnx and self.session is not None:
+            cls_out, reg_out = self._predict_onnx(x_norm)
+        else:
+            cls_out, reg_out = self._predict_pytorch(x_norm)
+        
+        # 解析结果
+        probs = self._softmax(cls_out[0])
+        pred_dir = int(np.argmax(probs))
+        confidence = float(probs[pred_dir])
+        
+        offset, tp_dist, sl_dist = reg_out[0]
+        
+        result = {
+            'direction': pred_dir,  # 0=Hold, 1=Long, 2=Short
+            'confidence': confidence,
+            'probabilities': {
+                'hold': float(probs[0]),
+                'long': float(probs[1]),
+                'short': float(probs[2])
+            },
+            'regression': {
+                'offset': float(offset),
+                'tp_dist': float(tp_dist),
+                'sl_dist': float(sl_dist)
+            }
+        }
+        
+        return result
     
-    def post_process(
+    def _predict_onnx(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """使用ONNX Runtime推理"""
+        x_input = x.astype(np.float32)[np.newaxis, ...]  # (1, window_size, features)
+        
+        outputs = self.session.run(
+            None,
+            {'input': x_input}
+        )
+        
+        cls_out = outputs[0]  # (1, 3)
+        reg_out = outputs[1]  # (1, 3)
+        
+        return cls_out, reg_out
+    
+    def _predict_pytorch(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """使用PyTorch推理"""
+        x_tensor = torch.FloatTensor(x).unsqueeze(0).to(self.device)  # (1, window_size, features)
+        
+        with torch.no_grad():
+            cls_out, reg_out = self.model(x_tensor)
+        
+        cls_out = cls_out.cpu().numpy()
+        reg_out = reg_out.cpu().numpy()
+        
+        return cls_out, reg_out
+    
+    def _softmax(self, x: np.ndarray) -> np.ndarray:
+        """Softmax函数"""
+        exp_x = np.exp(x - np.max(x))
+        return exp_x / exp_x.sum()
+    
+    def calculate_order_prices(
         self,
-        raw_output: np.ndarray,
-        current_price: float,
-        timestamp: int
-    ) -> PredictionResult:
+        prediction: Dict,
+        current_price: float
+    ) -> Optional[Dict]:
         """
-        后处理校验
+        根据预测结果计算订单价格
         
         Args:
-            raw_output: 模型原始输出 [rr, sl_pct, tp_pct]
+            prediction: 预测结果
             current_price: 当前价格
-            timestamp: 时间戳
             
         Returns:
-            校验后的预测结果
+            订单价格字典，如果不满足条件则返回None
         """
-        rr_score = raw_output[0]
-        sl_pct = abs(raw_output[1])
-        tp_pct = abs(raw_output[2])
+        direction = prediction['direction']
+        confidence = prediction['confidence']
+        reg = prediction['regression']
         
-        if rr_score > 0:
-            signal = "LONG"
-            sl_price = current_price * (1 - sl_pct)
-            tp_price = current_price * (1 + tp_pct)
-        else:
-            signal = "SHORT"
-            sl_price = current_price * (1 + sl_pct)
-            tp_price = current_price * (1 - tp_pct)
+        # 过滤条件
+        if direction == 0:  # Hold
+            return None
         
-        valid = self._validate(
-            rr_score, sl_pct, tp_pct,
-            current_price, sl_price, tp_price, signal
-        )
+        if confidence < 0.65:  # 置信度过低
+            return None
         
-        if not valid:
-            signal = "NONE"
+        # 计算价格
+        offset = reg['offset']
+        tp_dist = reg['tp_dist']
+        sl_dist = reg['sl_dist']
         
-        return PredictionResult(
-            valid=valid,
-            signal=signal,
-            rr_score=abs(rr_score),
-            entry_price=current_price,
-            sl_price=sl_price,
-            tp_price=tp_price,
-            sl_pct=sl_pct,
-            tp_pct=tp_pct,
-            timestamp=timestamp
-        )
+        entry_price = current_price * (1 + offset)
+        
+        if direction == 1:  # Long
+            tp_price = entry_price * (1 + tp_dist)
+            sl_price = entry_price * (1 - sl_dist)
+            side = 'long'
+        else:  # Short
+            tp_price = entry_price * (1 - tp_dist)
+            sl_price = entry_price * (1 + sl_dist)
+            side = 'short'
+        
+        # 计算盈亏比
+        risk = abs(entry_price - sl_price) / entry_price
+        reward = abs(tp_price - entry_price) / entry_price
+        rr_ratio = reward / risk if risk > 0 else 0
+        
+        # 过滤低盈亏比
+        if rr_ratio < 1.5:
+            return None
+        
+        return {
+            'side': side,
+            'entry_price': entry_price,
+            'tp_price': tp_price,
+            'sl_price': sl_price,
+            'confidence': confidence,
+            'rr_ratio': rr_ratio,
+            'estimated_space': reward
+        }
+
+
+def load_inference_model(
+    model_dir: Path,
+    use_onnx: bool = True,
+    device: str = 'cpu'
+) -> ModelInference:
+    """
+    加载推理模型
     
-    def _validate(
-        self,
-        rr_score: float,
-        sl_pct: float,
-        tp_pct: float,
-        current_price: float,
-        sl_price: float,
-        tp_price: float,
-        signal: str
-    ) -> bool:
-        """校验预测结果"""
-        if abs(rr_score) < self.min_rr:
-            logger.debug(f"RR {rr_score} below threshold {self.min_rr}")
-            return False
+    Args:
+        model_dir: 模型目录
+        use_onnx: 是否使用ONNX
+        device: 设备
         
-        if sl_pct < self.min_sl_pct or sl_pct > self.max_sl_pct:
-            logger.debug(f"SL pct {sl_pct} out of range [{self.min_sl_pct}, {self.max_sl_pct}]")
-            return False
-        
-        if signal == "LONG":
-            if not (sl_price < current_price < tp_price):
-                logger.debug(f"Invalid LONG prices: SL={sl_price}, Entry={current_price}, TP={tp_price}")
-                return False
+    Returns:
+        ModelInference实例
+    """
+    if use_onnx:
+        onnx_path = model_dir / 'model.onnx'
+        if onnx_path.exists():
+            return ModelInference(onnx_path, device, use_onnx=True)
         else:
-            if not (tp_price < current_price < sl_price):
-                logger.debug(f"Invalid SHORT prices: TP={tp_price}, Entry={current_price}, SL={sl_price}")
-                return False
-        
-        return True
+            logger.warning(f"ONNX model not found at {onnx_path}, falling back to PyTorch")
     
-    def _invalid_result(
-        self,
-        current_price: float,
-        timestamp: int,
-        reason: str
-    ) -> PredictionResult:
-        """返回无效结果"""
-        logger.warning(f"Invalid prediction: {reason}")
-        return PredictionResult(
-            valid=False,
-            signal="NONE",
-            rr_score=0.0,
-            entry_price=current_price,
-            sl_price=current_price,
-            tp_price=current_price,
-            sl_pct=0.0,
-            tp_pct=0.0,
-            timestamp=timestamp
-        )
+    # 使用PyTorch模型
+    pt_path = model_dir / 'best_model.pt'
+    if not pt_path.exists():
+        pt_path = model_dir / 'final_model.pt'
+    
+    if not pt_path.exists():
+        raise FileNotFoundError(f"No model found in {model_dir}")
+    
+    return ModelInference(pt_path, device, use_onnx=False)

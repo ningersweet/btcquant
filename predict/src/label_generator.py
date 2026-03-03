@@ -1,127 +1,215 @@
 """
-标签生成模块
+标签生成器
 
-生成训练标签：y_rr, y_sl_pct, y_tp_pct
+严格按照模型设计.md中的数学公式生成训练标签
 """
 
-import logging
 import numpy as np
 import pandas as pd
-from typing import Tuple
-
-from ..config import config
+from typing import Tuple, Optional
+import logging
 
 logger = logging.getLogger(__name__)
 
 
-def generate_labels(df: pd.DataFrame, window: int = None) -> pd.DataFrame:
+class LabelGenerator:
     """
-    生成训练标签（含趋势强度过滤和 RR 截断）
+    标签生成器
     
-    对于每个时刻 t，查看未来 window 个周期的数据：
-    1. 获取 max_high 和 min_low
-    2. 趋势强度过滤：弱趋势（upside ≈ downside）标为 NaN 不参与训练
-    3. 判断方向，计算 TP/SL 百分比
-    4. sl_pct 设最小保护值，防止除零产生极端 RR
-    5. RR 做截断，限制在合理范围
-    
-    Args:
-        df: 包含 OHLCV 的 DataFrame
-        window: 预测窗口（周期数）
-        
-    Returns:
-        添加了标签列的 DataFrame
+    基于未来K线的极值时序，计算有效净利润空间
     """
-    window = window or config.label.window_size
-    min_trend_strength = config.label.min_trend_strength
-    rr_clip = config.label.rr_clip_range
-    sl_floor = config.label.min_sl_pct_floor
     
-    result = df.copy()
-    n = len(df)
-    y_rr = np.full(n, np.nan)
-    y_sl_pct = np.full(n, np.nan)
-    y_tp_pct = np.full(n, np.nan)
-    y_direction = np.full(n, np.nan)
+    def __init__(
+        self,
+        alpha: float = 0.0015,  # 入场缓冲系数
+        gamma: float = 0.0040,  # 止盈缓冲系数
+        beta: float = 0.0025,   # 止损缓冲系数
+        theta_min: float = 0.0100,  # 最小净利阈值
+        K: int = 12  # 预测窗口长度
+    ):
+        self.alpha = alpha
+        self.gamma = gamma
+        self.beta = beta
+        self.theta_min = theta_min
+        self.K = K
+        
+        logger.info(f"LabelGenerator initialized with α={alpha}, γ={gamma}, β={beta}, θ_min={theta_min}, K={K}")
     
-    skipped_weak = 0
+    def generate_labels(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        生成标签
+        
+        Args:
+            df: 包含 ['open', 'high', 'low', 'close', 'volume'] 的DataFrame
+            
+        Returns:
+            包含标签的DataFrame，新增列：
+            - y_dir: 方向 (0=Hold, 1=Long, 2=Short)
+            - y_offset: 入场偏移率
+            - y_tp_dist: 止盈距离率
+            - y_sl_dist: 止损距离率
+            - y_space: 空间权重因子
+        """
+        df = df.copy()
+        n = len(df)
+        
+        # 初始化标签列
+        df['y_dir'] = 0
+        df['y_offset'] = 0.0
+        df['y_tp_dist'] = 0.0
+        df['y_sl_dist'] = 0.0
+        df['y_space'] = 0.0
+        
+        # 对每个时间点计算标签
+        valid_count = 0
+        long_count = 0
+        short_count = 0
+        hold_count = 0
+        
+        for i in range(n - self.K):
+            # 未来窗口
+            future_window = df.iloc[i+1:i+1+self.K]
+            
+            if len(future_window) < self.K:
+                continue
+            
+            # 提取极值
+            H_max = future_window['high'].max()
+            L_min = future_window['low'].min()
+            
+            # 获取极值索引（相对于窗口起始）
+            idx_high = future_window['high'].idxmax() - future_window.index[0]
+            idx_low = future_window['low'].idxmin() - future_window.index[0]
+            
+            # 基准价格（下一根K线的开盘价）
+            P_open = future_window.iloc[0]['open']
+            
+            # 计算做多和做空场景
+            space_long = self._calculate_long_space(L_min, H_max, idx_low, idx_high)
+            space_short = self._calculate_short_space(H_max, L_min, idx_high, idx_low)
+            
+            # 决策逻辑
+            if space_long >= self.theta_min and space_long >= space_short:
+                # 做多
+                df.loc[df.index[i], 'y_dir'] = 1
+                P_entry = L_min * (1 + self.alpha)
+                P_tp = H_max * (1 - self.gamma)
+                P_sl = L_min * (1 - self.beta)
+                
+                df.loc[df.index[i], 'y_offset'] = (P_entry - P_open) / P_open
+                df.loc[df.index[i], 'y_tp_dist'] = (P_tp - P_entry) / P_entry
+                df.loc[df.index[i], 'y_sl_dist'] = (P_entry - P_sl) / P_entry
+                df.loc[df.index[i], 'y_space'] = space_long
+                
+                long_count += 1
+                valid_count += 1
+                
+            elif space_short >= self.theta_min and space_short > space_long:
+                # 做空
+                df.loc[df.index[i], 'y_dir'] = 2
+                P_entry = H_max * (1 - self.alpha)
+                P_tp = L_min * (1 + self.gamma)
+                P_sl = H_max * (1 + self.beta)
+                
+                df.loc[df.index[i], 'y_offset'] = (P_entry - P_open) / P_open
+                df.loc[df.index[i], 'y_tp_dist'] = (P_entry - P_tp) / P_entry
+                df.loc[df.index[i], 'y_sl_dist'] = (P_sl - P_entry) / P_entry
+                df.loc[df.index[i], 'y_space'] = space_short
+                
+                short_count += 1
+                valid_count += 1
+                
+            else:
+                # 持有
+                hold_count += 1
+        
+        logger.info(f"Label generation complete: Total={n}, Valid={valid_count}, "
+                   f"Long={long_count}, Short={short_count}, Hold={hold_count}")
+        logger.info(f"Label distribution: Long={long_count/n*100:.2f}%, "
+                   f"Short={short_count/n*100:.2f}%, Hold={hold_count/n*100:.2f}%")
+        
+        return df
     
-    for i in range(n - window):
-        current_close = df["close"].iloc[i]
-        future_slice = df.iloc[i+1:i+1+window]
+    def _calculate_long_space(
+        self, 
+        L_min: float, 
+        H_max: float, 
+        idx_low: int, 
+        idx_high: int
+    ) -> float:
+        """
+        计算做多场景的有效空间
         
-        max_high = future_slice["high"].max()
-        min_low = future_slice["low"].min()
+        前提条件：先底后顶 (idx_low < idx_high)
+        """
+        # 时序检查
+        if idx_low >= idx_high:
+            return 0.0
         
-        upside = max_high - current_close
-        downside = current_close - min_low
+        # 理论价格
+        P_entry = L_min * (1 + self.alpha)
+        P_tp = H_max * (1 - self.gamma)
+        P_sl = L_min * (1 - self.beta)
         
-        trend_strength = abs(upside - downside) / current_close
-        if trend_strength < min_trend_strength:
-            skipped_weak += 1
-            continue
+        # 有效性检查
+        if P_tp <= P_entry:
+            return 0.0
         
-        if upside > downside:
-            direction = 1
-            tp_pct = upside / current_close
-            sl_pct = downside / current_close
-        else:
-            direction = -1
-            tp_pct = downside / current_close
-            sl_pct = upside / current_close
-        
-        sl_pct = max(sl_pct, sl_floor)
-        
-        rr = np.clip(
-            tp_pct / sl_pct * direction,
-            -rr_clip, rr_clip
-        )
-        
-        y_rr[i] = rr
-        y_sl_pct[i] = sl_pct
-        y_tp_pct[i] = tp_pct
-        y_direction[i] = direction
+        # 有效空间
+        space = (P_tp - P_entry) / P_entry
+        return space
     
-    result["y_rr"] = y_rr
-    result["y_sl_pct"] = y_sl_pct
-    result["y_tp_pct"] = y_tp_pct
-    result["y_direction"] = y_direction
-    
-    valid_count = np.sum(~np.isnan(y_rr))
-    total_candidates = n - window
-    logger.info(
-        f"Labels generated: {valid_count}/{total_candidates} valid, "
-        f"{skipped_weak} weak trends filtered (threshold={min_trend_strength}), "
-        f"RR clipped to [{-rr_clip}, {rr_clip}], sl_pct floor={sl_floor}"
-    )
-    return result
+    def _calculate_short_space(
+        self, 
+        H_max: float, 
+        L_min: float, 
+        idx_high: int, 
+        idx_low: int
+    ) -> float:
+        """
+        计算做空场景的有效空间
+        
+        前提条件：先顶后底 (idx_high < idx_low)
+        """
+        # 时序检查
+        if idx_high >= idx_low:
+            return 0.0
+        
+        # 理论价格
+        P_entry = H_max * (1 - self.alpha)
+        P_tp = L_min * (1 + self.gamma)
+        P_sl = H_max * (1 + self.beta)
+        
+        # 有效性检查
+        if P_tp >= P_entry:
+            return 0.0
+        
+        # 有效空间
+        space = (P_entry - P_tp) / P_entry
+        return space
 
 
-def compute_sample_weights(
-    timestamps: pd.Series,
-    decay_lambda: float = None
-) -> np.ndarray:
+def generate_labels_from_klines(
+    klines: pd.DataFrame,
+    alpha: float = 0.0015,
+    gamma: float = 0.0040,
+    beta: float = 0.0025,
+    theta_min: float = 0.0100,
+    K: int = 12
+) -> pd.DataFrame:
     """
-    计算样本权重（时间衰减）
-    
-    Weight = exp(-λ × ΔDays)
+    便捷函数：从K线数据生成标签
     
     Args:
-        timestamps: 时间戳序列
-        decay_lambda: 衰减系数
+        klines: K线数据
+        alpha: 入场缓冲系数
+        gamma: 止盈缓冲系数
+        beta: 止损缓冲系数
+        theta_min: 最小净利阈值
+        K: 预测窗口长度
         
     Returns:
-        权重数组
+        带标签的DataFrame
     """
-    decay_lambda = decay_lambda or config.label.decay_lambda
-    
-    if timestamps.dtype == 'int64':
-        dt = pd.to_datetime(timestamps, unit='ms')
-    else:
-        dt = pd.to_datetime(timestamps)
-    
-    latest = dt.max()
-    delta_days = (latest - dt).dt.days
-    weights = np.exp(-decay_lambda * delta_days)
-    
-    return weights.values
+    generator = LabelGenerator(alpha, gamma, beta, theta_min, K)
+    return generator.generate_labels(klines)

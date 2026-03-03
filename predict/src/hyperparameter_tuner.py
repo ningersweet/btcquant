@@ -1,16 +1,20 @@
 """
-超参数优化模块
+超参数优化器
 
-使用 Optuna 进行自动超参数搜索
+使用Optuna进行超参数搜索
 """
 
-import logging
-from typing import Dict, Tuple
-import numpy as np
 import optuna
-from optuna.trial import Trial
-from sklearn.multioutput import MultiOutputRegressor
-from lightgbm import LGBMRegressor
+import torch
+import pandas as pd
+import numpy as np
+from pathlib import Path
+import logging
+from typing import Dict
+
+from .tcn_model import create_tcn_model
+from .model_trainer import ModelTrainer
+from .data_loader import create_dataloaders
 
 logger = logging.getLogger(__name__)
 
@@ -18,164 +22,143 @@ logger = logging.getLogger(__name__)
 class HyperparameterTuner:
     """超参数优化器"""
     
-    def __init__(self, random_state: int = 42):
-        self.random_state = random_state
-        self.best_params = None
-        self.best_score = None
-        self.study = None
-    
-    def optimize(
+    def __init__(
         self,
-        X_train: np.ndarray,
-        y_train: np.ndarray,
-        X_val: np.ndarray,
-        y_val: np.ndarray,
-        weights_train: np.ndarray = None,
+        train_df: pd.DataFrame,
+        val_df: pd.DataFrame,
+        window_size: int = 288,
         n_trials: int = 50,
-        timeout: int = 3600
-    ) -> Dict:
+        device: str = 'cpu'
+    ):
+        self.train_df = train_df
+        self.val_df = val_df
+        self.window_size = window_size
+        self.n_trials = n_trials
+        self.device = device
+        
+        logger.info(f"HyperparameterTuner initialized with {n_trials} trials")
+    
+    def objective(self, trial: optuna.Trial) -> float:
         """
-        执行超参数优化
+        优化目标函数
         
         Args:
-            X_train: 训练特征
-            y_train: 训练标签
-            X_val: 验证特征
-            y_val: 验证标签
-            weights_train: 训练样本权重
-            n_trials: 优化次数
-            timeout: 超时时间（秒）
+            trial: Optuna trial对象
             
         Returns:
-            最佳参数和评估指标
+            验证集损失
         """
-        logger.info(f"Starting hyperparameter optimization: {n_trials} trials, timeout={timeout}s")
+        # 搜索空间
+        channels = trial.suggest_categorical('channels', [32, 64, 128])
+        num_layers = trial.suggest_int('num_layers', 6, 10)
+        dropout = trial.suggest_float('dropout', 0.1, 0.4)
+        learning_rate = trial.suggest_loguniform('learning_rate', 1e-4, 1e-2)
+        batch_size = trial.suggest_categorical('batch_size', [64, 128, 256])
+        lambda_reg = trial.suggest_float('lambda_reg', 0.3, 0.7)
         
-        def objective(trial: Trial) -> float:
-            """优化目标函数"""
-            params = {
-                'n_estimators': trial.suggest_int('n_estimators', 100, 1000, step=50),
-                'max_depth': trial.suggest_int('max_depth', 3, 10),
-                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3, log=True),
-                'min_child_samples': trial.suggest_int('min_child_samples', 20, 100, step=10),
-                'subsample': trial.suggest_float('subsample', 0.6, 1.0),
-                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.6, 1.0),
-                'reg_alpha': trial.suggest_float('reg_alpha', 1e-8, 10.0, log=True),
-                'reg_lambda': trial.suggest_float('reg_lambda', 1e-8, 10.0, log=True),
-                'random_state': self.random_state,
-                'verbose': -1,
-                'n_jobs': 1
-            }
-            
-            # 创建模型
-            base_model = LGBMRegressor(**params)
-            model = MultiOutputRegressor(base_model)
-            
-            # 训练
-            if weights_train is not None:
-                model.fit(X_train, y_train, sample_weight=weights_train)
-            else:
-                model.fit(X_train, y_train)
-            
-            # 预测
-            y_pred = model.predict(X_val)
-            
-            # 计算评估指标
-            metrics = self._compute_metrics(y_val, y_pred)
-            
-            # 优化目标：最大化方向准确率，同时最小化 MAE
-            # 使用加权组合
-            direction_acc = metrics['direction_accuracy']
-            mae_rr = metrics['mae_rr']
-            
-            # 归一化 MAE（假设合理范围是 0-100）
-            normalized_mae = min(mae_rr / 100.0, 1.0)
-            
-            # 综合得分：70% 方向准确率 + 30% (1 - normalized_mae)
-            score = 0.7 * direction_acc + 0.3 * (1 - normalized_mae)
-            
-            # 记录中间结果
-            trial.set_user_attr('direction_accuracy', direction_acc)
-            trial.set_user_attr('mae_rr', mae_rr)
-            trial.set_user_attr('mae_sl', metrics['mae_sl'])
-            trial.set_user_attr('mae_tp', metrics['mae_tp'])
-            
-            return score
-        
-        # 创建 Optuna study
-        self.study = optuna.create_study(
-            direction='maximize',
-            sampler=optuna.samplers.TPESampler(seed=self.random_state)
+        # 创建数据加载器
+        train_loader, val_loader, _ = create_dataloaders(
+            self.train_df, self.val_df, self.val_df,  # 测试集用验证集代替
+            window_size=self.window_size,
+            batch_size=batch_size,
+            num_workers=0
         )
         
-        # 执行优化
-        self.study.optimize(
-            objective,
-            n_trials=n_trials,
-            timeout=timeout,
-            show_progress_bar=True
+        # 创建模型
+        model = create_tcn_model(
+            input_dim=5,
+            channels=channels,
+            num_layers=num_layers,
+            kernel_size=3,
+            dropout=dropout
         )
         
-        # 获取最佳参数
-        self.best_params = self.study.best_params
-        self.best_score = self.study.best_value
+        # 训练器
+        trainer = ModelTrainer(
+            model=model,
+            device=self.device,
+            learning_rate=learning_rate,
+            lambda_cls=1.0,
+            lambda_reg=lambda_reg,
+            theta_min=0.01
+        )
         
-        # 获取最佳 trial 的详细指标
-        best_trial = self.study.best_trial
-        best_metrics = {
-            'direction_accuracy': best_trial.user_attrs['direction_accuracy'],
-            'mae_rr': best_trial.user_attrs['mae_rr'],
-            'mae_sl': best_trial.user_attrs['mae_sl'],
-            'mae_tp': best_trial.user_attrs['mae_tp']
-        }
+        # 训练（少量epoch用于快速评估）
+        max_epochs = 20
+        best_val_loss = float('inf')
         
-        logger.info(f"Optimization completed. Best score: {self.best_score:.4f}")
-        logger.info(f"Best params: {self.best_params}")
-        logger.info(f"Best metrics: {best_metrics}")
+        for epoch in range(max_epochs):
+            train_loss, _, _ = trainer.train_epoch(train_loader)
+            val_loss, _, _, val_acc = trainer.validate(val_loader)
+            
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+            
+            # 报告中间结果
+            trial.report(val_loss, epoch)
+            
+            # 早停检查
+            if trial.should_prune():
+                raise optuna.TrialPruned()
         
-        return {
-            'best_params': self.best_params,
-            'best_score': round(self.best_score, 4),
-            'best_metrics': best_metrics,
-            'n_trials': len(self.study.trials),
-            'best_trial_number': best_trial.number
-        }
+        return best_val_loss
     
-    def _compute_metrics(self, y_true: np.ndarray, y_pred: np.ndarray) -> Dict:
-        """计算评估指标"""
-        direction_true = np.sign(y_true[:, 0])
-        direction_pred = np.sign(y_pred[:, 0])
-        direction_acc = np.mean(direction_true == direction_pred)
+    def optimize(self, save_path: Optional[Path] = None) -> Dict:
+        """
+        运行超参数优化
         
-        mae_rr = np.mean(np.abs(y_true[:, 0] - y_pred[:, 0]))
-        mae_sl = np.mean(np.abs(y_true[:, 1] - y_pred[:, 1]))
-        mae_tp = np.mean(np.abs(y_true[:, 2] - y_pred[:, 2]))
+        Args:
+            save_path: 保存最佳参数的路径
+            
+        Returns:
+            最佳参数字典
+        """
+        study = optuna.create_study(
+            direction='minimize',
+            pruner=optuna.pruners.MedianPruner()
+        )
         
-        return {
-            "direction_accuracy": direction_acc,
-            "mae_rr": mae_rr,
-            "mae_sl": mae_sl,
-            "mae_tp": mae_tp
-        }
+        study.optimize(self.objective, n_trials=self.n_trials)
+        
+        logger.info(f"Best trial: {study.best_trial.number}")
+        logger.info(f"Best value: {study.best_value:.4f}")
+        logger.info(f"Best params: {study.best_params}")
+        
+        # 保存结果
+        if save_path:
+            import json
+            with open(save_path, 'w') as f:
+                json.dump({
+                    'best_value': study.best_value,
+                    'best_params': study.best_params,
+                    'n_trials': len(study.trials)
+                }, f, indent=2)
+            logger.info(f"Best params saved to {save_path}")
+        
+        return study.best_params
+
+
+def tune_hyperparameters(
+    train_df: pd.DataFrame,
+    val_df: pd.DataFrame,
+    window_size: int = 288,
+    n_trials: int = 50,
+    device: str = 'cpu',
+    save_path: Optional[Path] = None
+) -> Dict:
+    """
+    便捷函数：超参数优化
     
-    def get_optimization_history(self) -> Dict:
-        """获取优化历史"""
-        if self.study is None:
-            return {}
+    Args:
+        train_df: 训练数据
+        val_df: 验证数据
+        window_size: 窗口大小
+        n_trials: 试验次数
+        device: 设备
+        save_path: 保存路径
         
-        trials_data = []
-        for trial in self.study.trials:
-            if trial.state == optuna.trial.TrialState.COMPLETE:
-                trials_data.append({
-                    'number': trial.number,
-                    'score': trial.value,
-                    'params': trial.params,
-                    'direction_accuracy': trial.user_attrs.get('direction_accuracy', 0),
-                    'mae_rr': trial.user_attrs.get('mae_rr', 0)
-                })
-        
-        return {
-            'trials': trials_data,
-            'best_trial': self.study.best_trial.number,
-            'best_score': self.best_score
-        }
+    Returns:
+        最佳参数字典
+    """
+    tuner = HyperparameterTuner(train_df, val_df, window_size, n_trials, device)
+    return tuner.optimize(save_path)

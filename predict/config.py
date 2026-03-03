@@ -1,123 +1,95 @@
 """
 预测服务配置模块
 
-从 YAML 配置文件加载配置
+从环境变量加载TCN模型配置
 """
 
 import os
-import sys
-sys.path.insert(0, str(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from pathlib import Path
+from dotenv import load_dotenv
 
-from common.config_loader import get_config
-
-
-class ModelConfig:
-    """模型配置"""
-    
-    @property
-    def n_estimators(self) -> int:
-        return get_config("predict.model.n_estimators", 500)
-    
-    @property
-    def max_depth(self) -> int:
-        return get_config("predict.model.max_depth", 6)
-    
-    @property
-    def min_child_samples(self) -> int:
-        return get_config("predict.model.min_child_samples", 50)
-    
-    @property
-    def subsample(self) -> float:
-        return get_config("predict.model.subsample", 0.8)
-    
-    @property
-    def colsample_bytree(self) -> float:
-        return get_config("predict.model.colsample_bytree", 0.8)
-    
-    @property
-    def learning_rate(self) -> float:
-        return get_config("predict.model.learning_rate", 0.05)
-    
-    @property
-    def random_state(self) -> int:
-        return get_config("predict.model.random_state", 42)
+# 加载环境变量
+env_path = Path(__file__).parent / '.env'
+if env_path.exists():
+    load_dotenv(env_path)
 
 
 class LabelConfig:
-    """标签配置"""
+    """标签生成配置"""
     
-    @property
-    def window_size(self) -> int:
-        return get_config("predict.label.window_size", 1)
+    # 缓冲系数
+    ALPHA = float(os.getenv('LABEL_ALPHA', '0.0015'))  # 入场缓冲
+    GAMMA = float(os.getenv('LABEL_GAMMA', '0.0040'))  # 止盈缓冲
+    BETA = float(os.getenv('LABEL_BETA', '0.0025'))    # 止损缓冲
     
-    @property
-    def decay_lambda(self) -> float:
-        return get_config("predict.label.decay_lambda", 0.00095)
+    # 阈值
+    THETA_MIN = float(os.getenv('LABEL_THETA_MIN', '0.0100'))  # 最小净利阈值
     
-    @property
-    def min_trend_strength(self) -> float:
-        """趋势强度最低阈值，低于此值视为噪声不生成标签"""
-        return get_config("predict.label.min_trend_strength", 0.005)
-    
-    @property
-    def rr_clip_range(self) -> float:
-        """盈亏比截断范围 [-rr_clip_range, rr_clip_range]"""
-        return get_config("predict.label.rr_clip_range", 10.0)
-    
-    @property
-    def min_sl_pct_floor(self) -> float:
-        """止损百分比最小值，防止除零产生极端 RR"""
-        return get_config("predict.label.min_sl_pct_floor", 0.001)
+    # 预测窗口
+    K = int(os.getenv('LABEL_K', '12'))  # 未来K线数量
 
 
-class ValidationConfig:
-    """校验配置"""
+class DataConfig:
+    """数据配置"""
     
-    @property
-    def min_rr(self) -> float:
-        return get_config("predict.validation.min_rr", 1.5)
+    WINDOW_SIZE = int(os.getenv('DATA_WINDOW_SIZE', '288'))  # 输入窗口
+    INTERVAL = os.getenv('DATA_INTERVAL', '5m')  # K线间隔
+    START_DATE = os.getenv('DATA_START_DATE', '2019-01-01')
+    END_DATE = os.getenv('DATA_END_DATE', '')  # 空则使用当前日期
     
-    @property
-    def max_sl_pct(self) -> float:
-        return get_config("predict.validation.max_sl_pct", 0.05)
+    # 数据集划分
+    TRAIN_RATIO = float(os.getenv('DATA_TRAIN_RATIO', '0.7'))
+    VAL_RATIO = float(os.getenv('DATA_VAL_RATIO', '0.15'))
+    TEST_RATIO = float(os.getenv('DATA_TEST_RATIO', '0.15'))
+
+
+class ModelConfig:
+    """TCN模型配置"""
     
-    @property
-    def min_sl_pct(self) -> float:
-        return get_config("predict.validation.min_sl_pct", 0.001)
+    INPUT_DIM = int(os.getenv('MODEL_INPUT_DIM', '5'))  # OHLCV
+    CHANNELS = int(os.getenv('MODEL_CHANNELS', '64'))
+    NUM_LAYERS = int(os.getenv('MODEL_NUM_LAYERS', '8'))
+    KERNEL_SIZE = int(os.getenv('MODEL_KERNEL_SIZE', '3'))
+    DROPOUT = float(os.getenv('MODEL_DROPOUT', '0.2'))
+
+
+class TrainConfig:
+    """训练配置"""
+    
+    BATCH_SIZE = int(os.getenv('TRAIN_BATCH_SIZE', '128'))
+    LEARNING_RATE = float(os.getenv('TRAIN_LEARNING_RATE', '0.001'))
+    EPOCHS = int(os.getenv('TRAIN_EPOCHS', '100'))
+    EARLY_STOPPING_PATIENCE = int(os.getenv('TRAIN_EARLY_STOPPING_PATIENCE', '15'))
+    
+    # 损失权重
+    LAMBDA_CLS = float(os.getenv('TRAIN_LAMBDA_CLS', '1.0'))
+    LAMBDA_REG = float(os.getenv('TRAIN_LAMBDA_REG', '0.5'))
+    
+    DEVICE = os.getenv('TRAIN_DEVICE', 'cpu')
+
+
+class InferenceConfig:
+    """推理配置"""
+    
+    MIN_CONFIDENCE = float(os.getenv('INFERENCE_MIN_CONFIDENCE', '0.65'))
+    MIN_SPACE = float(os.getenv('INFERENCE_MIN_SPACE', '0.01'))
 
 
 class ServiceConfig:
     """服务配置"""
     
-    @property
-    def host(self) -> str:
-        return get_config("predict.host", "0.0.0.0")
+    DATA_SERVICE_URL = os.getenv('DATA_SERVICE_URL', 'http://localhost:8001')
+    FEATURES_SERVICE_URL = os.getenv('FEATURES_SERVICE_URL', 'http://localhost:8002')
     
-    @property
-    def port(self) -> int:
-        return get_config("predict.port", 8003)
-    
-    @property
-    def model_path(self) -> str:
-        return get_config("predict.model_path", "/app/models")
-    
-    @property
-    def data_service_url(self) -> str:
-        return get_config("predict.data_service_url", "http://data-service:8001")
-    
-    @property
-    def features_service_url(self) -> str:
-        return get_config("predict.features_service_url", "http://features-service:8002")
+    # 模型保存路径
+    MODEL_DIR = Path(__file__).parent / 'models'
+    MODEL_DIR.mkdir(exist_ok=True)
 
 
-class PredictServiceConfig:
-    """预测服务主配置"""
-    
-    def __init__(self):
-        self.model = ModelConfig()
-        self.label = LabelConfig()
-        self.validation = ValidationConfig()
-        self.service = ServiceConfig()
-
-
-config = PredictServiceConfig()
+# 全局配置实例
+label_config = LabelConfig()
+data_config = DataConfig()
+model_config = ModelConfig()
+train_config = TrainConfig()
+inference_config = InferenceConfig()
+service_config = ServiceConfig()

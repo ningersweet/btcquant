@@ -1,44 +1,55 @@
-# 敏感数据
-*.db
-.env
-
-# 模型文件
-*.pkl
-*.joblib
-predict/models/*
-!predict/models/.gitkeep
-
-# 数据文件
-*.parquet
-*.csv
-
-# 日志
-logs/
-*.log
-
 # Python
 __pycache__/
-*.pyc
-*.pyo
-.venv/
-venv/
-.pytest_cache/
+*.py[cod]
+*$py.class
+*.so
+.Python
 *.egg-info/
+dist/
+build/
+venv/
+env/
+.venv/
 
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
+# 环境配置
+.env
+*.env.local
 
-# Docker
-.docker/
+# 数据和模型文件（太大，不提交）
+*.pkl
+*.pth
+*.pt
+*.onnx
+data_storage/
+models/tcn_*/
+models/tcn_fast_*/
+!models/.gitkeep
 
-# macOS
-.DS_Store
+# 日志文件
+*.log
+nohup.out
+training_*.log
 
 # 临时文件
-*.tmp
-*.temp
+*.tar.gz
+*.zip
+deploy_package/
+data_cache.pkl
+training_data_cache.pkl
 
-config.yaml
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.qoder/
+
+# Mac
+.DS_Store
+
+# Docker volumes
+volumes/
+
+# 测试文件
+test_*.py
+*_test.py
