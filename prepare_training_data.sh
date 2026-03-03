@@ -9,7 +9,7 @@ echo "准备训练数据"
 echo "=========================================="
 
 # 配置
-DATA_START_DATE="2019-09-01"
+DATA_START_DATE="2019-01-01"
 DATA_END_DATE=""
 CACHE_FILE="training_data_cache.pkl"
 DATA_SERVICE_URL="http://localhost:8001"
@@ -145,7 +145,7 @@ def fetch_data(start_date, end_date=None, cache_file="training_data_cache.pkl"):
     return True
 
 if __name__ == "__main__":
-    start_date = sys.argv[1] if len(sys.argv) > 1 else "2019-09-01"
+    start_date = sys.argv[1] if len(sys.argv) > 1 else "2019-01-01"
     end_date = sys.argv[2] if len(sys.argv) > 2 else None
     cache_file = sys.argv[3] if len(sys.argv) > 3 else "training_data_cache.pkl"
     

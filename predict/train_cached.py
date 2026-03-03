@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 def fetch_historical_data_cached(
     symbol: str = "BTCUSDT",
     interval: str = "5m",
-    start_date: str = "2019-09-01",
+    start_date: str = "2019-01-01",
     end_date: str = None,
     cache_file: str = "data_cache.pkl"
 ) -> pd.DataFrame:
