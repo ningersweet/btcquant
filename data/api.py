@@ -42,7 +42,7 @@ async def get_klines(
     interval: str = Query(default="1h", description="K线周期"),
     start_time: Optional[int] = Query(default=None, description="开始时间戳(ms)"),
     end_time: Optional[int] = Query(default=None, description="结束时间戳(ms)"),
-    limit: int = Query(default=500, ge=1, le=1500, description="返回数量")
+    limit: int = Query(default=500, ge=1, le=5000, description="返回数量")
 ):
     """
     获取 K 线数据
@@ -54,9 +54,11 @@ async def get_klines(
             # 没有指定时间范围，返回最新的 limit 条
             klines = data_service.get_latest_klines(symbol, interval, limit)
         else:
-            # 指定了时间范围，返回该范围内的所有数据
+            # 指定了时间范围，返回该范围内的数据，但限制最大返回数量
             klines = data_service.get_klines(symbol, interval, start_time, end_time)
-            # 注意：不再限制返回数量，返回时间范围内的所有数据
+            # 限制返回数量，避免内存溢出
+            if len(klines) > limit:
+                klines = klines[:limit]
         
         data = [k.to_dict() for k in klines]
         

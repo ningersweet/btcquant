@@ -73,9 +73,11 @@ class DataService:
         """
         logger.info(f"Getting klines: {symbol} {interval} {start_time}-{end_time}")
         
+        # 查询数据库
         db_klines = self.db.query_klines(symbol, interval, start_time, end_time)
         logger.info(f"Found {len(db_klines)} klines in database")
         
+        # 检查缺失范围
         missing_ranges = find_missing_ranges(db_klines, start_time, end_time, interval)
         
         if not missing_ranges:
@@ -86,21 +88,38 @@ class DataService:
         
         all_klines = list(db_klines)
         
+        # 分批获取缺失数据，避免一次性加载过多数据到内存
         for range_start, range_end in missing_ranges:
             try:
-                api_klines = self.fetcher.fetch_klines(
-                    symbol, interval, range_start, range_end
-                )
+                # 限制单次获取的时间范围，避免内存溢出
+                interval_ms = BinanceFetcher.get_interval_ms(interval)
+                max_batch_size = 2000
+                max_time_range = max_batch_size * interval_ms
                 
-                valid_klines = validate_klines(api_klines)
-                
-                if valid_klines:
-                    self.db.insert_klines(valid_klines)
-                    all_klines.extend(valid_klines)
+                current_start = range_start
+                while current_start < range_end:
+                    batch_end = min(current_start + max_time_range, range_end)
+                    
+                    api_klines = self.fetcher.fetch_klines(
+                        symbol, interval, current_start, batch_end
+                    )
+                    
+                    valid_klines = validate_klines(api_klines)
+                    
+                    if valid_klines:
+                        # 立即保存到数据库，释放内存
+                        self.db.insert_klines(valid_klines)
+                        all_klines.extend(valid_klines)
+                    
+                    if not api_klines or len(api_klines) < max_batch_size:
+                        break
+                    
+                    current_start = batch_end
                     
             except Exception as e:
                 logger.error(f"Failed to fetch klines for range {range_start}-{range_end}: {e}")
         
+        # 排序和去重
         all_klines.sort(key=lambda x: x.timestamp)
         
         seen = set()

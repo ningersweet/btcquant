@@ -56,6 +56,7 @@ import requests
 import pandas as pd
 import pickle
 import sys
+import time
 from datetime import datetime
 
 def fetch_data(start_date, end_date=None, cache_file="training_data_cache.pkl"):
@@ -73,9 +74,11 @@ def fetch_data(start_date, end_date=None, cache_file="training_data_cache.pkl"):
     url = "http://localhost:8001/api/v1/klines"
     
     all_data = []
-    batch_size = 1500
+    batch_size = 2000  # 增加批次大小，减少请求次数
     current_start = start_ts
     batch_count = 0
+    retry_count = 0
+    max_retries = 3
     
     print("开始分批获取数据...")
     
@@ -93,7 +96,8 @@ def fetch_data(start_date, end_date=None, cache_file="training_data_cache.pkl"):
             print(f"  已获取 {batch_count} 批，共 {len(all_data)} 条记录")
         
         try:
-            response = requests.get(url, params=params, timeout=180)
+            # 减少超时时间，避免长时间占用内存
+            response = requests.get(url, params=params, timeout=60)
             response.raise_for_status()
             
             result = response.json()
@@ -110,12 +114,32 @@ def fetch_data(start_date, end_date=None, cache_file="training_data_cache.pkl"):
             last_timestamp = batch_data[-1]['timestamp']
             current_start = last_timestamp + 1
             
+            # 重置重试计数
+            retry_count = 0
+            
             if len(batch_data) < batch_size:
                 break
+            
+            # 添加短暂延迟，避免过快请求导致服务压力过大
+            time.sleep(0.1)
                 
+        except requests.exceptions.Timeout:
+            print(f"请求超时，重试 {retry_count + 1}/{max_retries}...")
+            retry_count += 1
+            if retry_count >= max_retries:
+                print(f"✗ 超过最大重试次数，停止获取")
+                break
+            time.sleep(2)
+            continue
+            
         except Exception as e:
             print(f"获取数据出错: {e}")
-            break
+            retry_count += 1
+            if retry_count >= max_retries:
+                print(f"✗ 超过最大重试次数，停止获取")
+                break
+            time.sleep(2)
+            continue
     
     if not all_data:
         print("✗ 未获取到任何数据")
