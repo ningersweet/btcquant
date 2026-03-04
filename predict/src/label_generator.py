@@ -37,7 +37,7 @@ class LabelGenerator:
     
     def generate_labels(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        生成标签
+        生成标签（优化版：支持进度显示和多核处理）
         
         Args:
             df: 包含 ['open', 'high', 'low', 'close', 'volume'] 的DataFrame
@@ -50,8 +50,14 @@ class LabelGenerator:
             - y_sl_dist: 止损距离率
             - y_space: 空间权重因子
         """
+        from tqdm import tqdm
+        import multiprocessing as mp
+        from functools import partial
+        
         df = df.copy()
         n = len(df)
+        
+        logger.info(f"开始生成标签，总样本数: {n}, 预测窗口: {self.K}")
         
         # 初始化标签列
         df['y_dir'] = 0
@@ -60,44 +66,103 @@ class LabelGenerator:
         df['y_sl_dist'] = 0.0
         df['y_space'] = 0.0
         
-        # 对每个时间点计算标签
+        # 准备数据用于并行处理
+        high_values = df['high'].values
+        low_values = df['low'].values
+        open_values = df['open'].values
+        
+        # 使用多进程处理
+        num_workers = min(4, mp.cpu_count())
+        logger.info(f"使用 {num_workers} 个进程并行处理")
+        
+        # 分块处理
+        chunk_size = max(1000, (n - self.K) // (num_workers * 10))
+        indices = list(range(n - self.K))
+        
+        # 创建处理函数
+        def process_chunk(idx_list):
+            results = []
+            for i in idx_list:
+                # 未来窗口
+                future_high = high_values[i+1:i+1+self.K]
+                future_low = low_values[i+1:i+1+self.K]
+                future_open = open_values[i+1]
+                
+                if len(future_high) < self.K:
+                    continue
+                
+                # 提取极值
+                H_max = future_high.max()
+                L_min = future_low.min()
+                
+                # 获取极值索引
+                idx_high = np.argmax(future_high)
+                idx_low = np.argmin(future_low)
+                
+                # 计算做多和做空场景
+                space_long = self._calculate_long_space(L_min, H_max, idx_low, idx_high)
+                space_short = self._calculate_short_space(H_max, L_min, idx_high, idx_low)
+                
+                # 决策逻辑
+                if space_long >= self.theta_min and space_long >= space_short:
+                    # 做多
+                    P_entry = L_min * (1 + self.alpha)
+                    P_tp = H_max * (1 - self.gamma)
+                    P_sl = L_min * (1 - self.beta)
+                    
+                    results.append((i, 1, 
+                                  (P_entry - future_open) / future_open,
+                                  (P_tp - P_entry) / P_entry,
+                                  (P_entry - P_sl) / P_entry,
+                                  space_long))
+                    
+                elif space_short >= self.theta_min and space_short > space_long:
+                    # 做空
+                    P_entry = H_max * (1 - self.alpha)
+                    P_tp = L_min * (1 + self.gamma)
+                    P_sl = H_max * (1 + self.beta)
+                    
+                    results.append((i, 2,
+                                  (P_entry - future_open) / future_open,
+                                  (P_entry - P_tp) / P_entry,
+                                  (P_sl - P_entry) / P_entry,
+                                  space_short))
+                else:
+                    # 持有
+                    results.append((i, 0, 0.0, 0.0, 0.0, 0.0))
+            
+            return results
+        
+        # 使用进度条的并行处理
+        with mp.Pool(num_workers) as pool:
+            chunks = [indices[i:i+chunk_size] for i in range(0, len(indices), chunk_size)]
+            results = []
+            
+            with tqdm(total=len(chunks), desc="生成标签", unit="chunk") as pbar:
+                for chunk_results in pool.imap(process_chunk, chunks):
+                    results.extend(chunk_results)
+                    pbar.update(1)
+        
+        # 应用结果
         valid_count = 0
         long_count = 0
         short_count = 0
         hold_count = 0
         
-        for i in range(n - self.K):
-            # 未来窗口
-            future_window = df.iloc[i+1:i+1+self.K]
+        for i, y_dir, y_offset, y_tp_dist, y_sl_dist, y_space in results:
+            df.loc[df.index[i], 'y_dir'] = y_dir
+            df.loc[df.index[i], 'y_offset'] = y_offset
+            df.loc[df.index[i], 'y_tp_dist'] = y_tp_dist
+            df.loc[df.index[i], 'y_sl_dist'] = y_sl_dist
+            df.loc[df.index[i], 'y_space'] = y_space
             
-            if len(future_window) < self.K:
-                continue
-            
-            # 提取极值
-            H_max = future_window['high'].max()
-            L_min = future_window['low'].min()
-            
-            # 获取极值索引（相对于窗口起始）
-            idx_high = future_window['high'].idxmax() - future_window.index[0]
-            idx_low = future_window['low'].idxmin() - future_window.index[0]
-            
-            # 基准价格（下一根K线的开盘价）
-            P_open = future_window.iloc[0]['open']
-            
-            # 计算做多和做空场景
-            space_long = self._calculate_long_space(L_min, H_max, idx_low, idx_high)
-            space_short = self._calculate_short_space(H_max, L_min, idx_high, idx_low)
-            
-            # 决策逻辑
-            if space_long >= self.theta_min and space_long >= space_short:
-                # 做多
-                df.loc[df.index[i], 'y_dir'] = 1
-                P_entry = L_min * (1 + self.alpha)
-                P_tp = H_max * (1 - self.gamma)
-                P_sl = L_min * (1 - self.beta)
-                
-                df.loc[df.index[i], 'y_offset'] = (P_entry - P_open) / P_open
-                df.loc[df.index[i], 'y_tp_dist'] = (P_tp - P_entry) / P_entry
+            valid_count += 1
+            if y_dir == 1:
+                long_count += 1
+            elif y_dir == 2:
+                short_count += 1
+            else:
+                hold_count += 1
                 df.loc[df.index[i], 'y_sl_dist'] = (P_entry - P_sl) / P_entry
                 df.loc[df.index[i], 'y_space'] = space_long
                 
