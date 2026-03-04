@@ -1,44 +1,41 @@
 """
-预测服务包初始化
+预测服务核心模块
+
+目录结构:
+- models/      模型架构和训练器
+- data/        数据加载和标签生成
+- evaluation/  回测和推理
+- utils/       工具函数
 """
 
-from .label_generator import LabelGenerator, generate_labels_from_klines
-from .tcn_model import TCNModel, TCNLoss, create_tcn_model
-from .data_loader import (
-    TimeSeriesDataset,
-    split_data,
-    create_dataloaders,
-    normalize_inference_data
-)
-from .model_trainer import ModelTrainer, EarlyStopping
-from .backtest import BacktestEngine
-from .inference import ModelInference, load_inference_model
+# 模型
+from .models import TCNModel, ModelTrainer
 
-# 可选依赖
-try:
-    from .hyperparameter_tuner import HyperparameterTuner, tune_hyperparameters
-    _has_optuna = True
-except ImportError:
-    HyperparameterTuner = None
-    tune_hyperparameters = None
-    _has_optuna = False
+# 数据
+from .data import (
+    load_klines_from_service,
+    split_data,
+    LabelGenerator,
+    generate_labels_from_klines
+)
+
+# 评估
+from .evaluation import (
+    Backtester,
+    load_inference_model
+)
+
+# 工具
+from .utils import tune_hyperparameters
 
 __all__ = [
+    'TCNModel',
+    'ModelTrainer',
+    'load_klines_from_service',
+    'split_data',
     'LabelGenerator',
     'generate_labels_from_klines',
-    'TCNModel',
-    'TCNLoss',
-    'create_tcn_model',
-    'TimeSeriesDataset',
-    'split_data',
-    'create_dataloaders',
-    'normalize_inference_data',
-    'ModelTrainer',
-    'EarlyStopping',
-    'BacktestEngine',
-    'ModelInference',
+    'Backtester',
     'load_inference_model',
+    'tune_hyperparameters',
 ]
-
-if _has_optuna:
-    __all__.extend(['HyperparameterTuner', 'tune_hyperparameters'])
