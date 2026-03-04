@@ -66,7 +66,15 @@ class LabelGenerator:
         short_count = 0
         hold_count = 0
         
+        total_samples = n - self.K
+        logger.info(f"开始处理 {total_samples} 个样本...")
+        
         for i in range(n - self.K):
+            # 每处理10%打印进度
+            if i > 0 and i % (total_samples // 10) == 0:
+                progress = i / total_samples * 100
+                logger.info(f"标签生成进度: {progress:.1f}% ({i}/{total_samples})")
+            
             # 未来窗口
             future_window = df.iloc[i+1:i+1+self.K]
             
