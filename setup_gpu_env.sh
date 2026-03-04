@@ -47,8 +47,9 @@ fi
 echo ""
 echo "[2/4] 创建Python环境..."
 
-# 接受Conda服务条款
+# 配置conda使用conda-forge，避免服务条款问题
 conda config --set channel_priority flexible
+conda config --remove channels defaults 2>/dev/null || true
 conda config --add channels conda-forge
 
 if conda env list | grep -q "btc_quant"; then
@@ -56,7 +57,7 @@ if conda env list | grep -q "btc_quant"; then
     conda activate btc_quant
 else
     echo "创建新环境..."
-    conda create -n btc_quant python=3.11 -y -c conda-forge
+    conda create -n btc_quant python=3.11 -y
     conda activate btc_quant
 fi
 
