@@ -81,6 +81,7 @@ BTC Quant 统一命令行工具 v${VERSION}
   train stop                     停止训练
   train sync-data                同步训练数据到GPU服务器
   train sync-model               同步模型到CPU服务器
+  train sync-config              同步配置文件到GPU服务器
 
 本地开发:
   local train                    本地训练（快速模式）
@@ -525,6 +526,9 @@ cmd_train() {
         sync-model)
             train_sync_model "$@"
             ;;
+        sync-config)
+            train_sync_config
+            ;;
         *)
             print_error "未知训练命令: $action"
             exit 1
@@ -552,29 +556,70 @@ train_start() {
     if [ "$use_gpu" = true ]; then
         print_header "启动GPU训练"
         
+        # 检查本地配置文件
+        if [ ! -f "config.yaml" ]; then
+            print_error "配置文件不存在: config.yaml"
+            print_info "请先复制并配置: cp config.yaml.example config.yaml"
+            return 1
+        fi
+        
+        # 传输配置文件到GPU服务器
+        print_info "传输配置文件到GPU服务器..."
+        scp config.yaml $GPU_SERVER:~/workspace/btcquant/
+        
         # 检查邮件配置
         print_info "检查邮件配置..."
         if [ -z "$SMTP_USER" ] || [ -z "$SMTP_PASSWORD" ]; then
             print_warning "未设置邮件配置，训练完成后不会发送邮件"
-            print_info "请在GPU服务器上设置: export \$(cat predict/.env.email | xargs)"
+            print_info "设置方法: export \$(cat predict/.env.email | xargs)"
         fi
         
+        # 在GPU服务器上启动训练
         ssh $GPU_SERVER << 'EOF'
-cd ~/workspace/btcquant/predict
+set -e
+cd ~/workspace/btcquant
 
-# 激活conda环境
-source ~/miniconda3/etc/profile.d/conda.sh
-conda activate btc_quant
+# 激活venv环境
+source venv/bin/activate
+
+# 检查是否有正在运行的训练任务
+if [ -f ~/training.pid ]; then
+    PID=$(cat ~/training.pid)
+    if ps -p $PID > /dev/null 2>&1; then
+        echo "发现正在运行的训练任务 (PID: $PID)"
+        read -p "是否停止并启动新训练? (y/n) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo "停止旧训练任务..."
+            kill $PID
+            sleep 2
+        else
+            echo "取消启动新训练"
+            exit 1
+        fi
+    fi
+    rm -f ~/training.pid
+fi
+
+# 创建存储目录
+mkdir -p storage/logs storage/cache storage/models
 
 # 启动后台训练
-nohup python train_with_notification.py > logs/training.log 2>&1 &
+cd predict
+nohup python train_with_notification.py --mode cache > ../storage/logs/training.log 2>&1 &
 PID=$!
 echo $PID > ~/training.pid
 
 echo "✓ 训练已在后台启动"
 echo "  PID: $PID"
 echo "  日志: ~/workspace/btcquant/storage/logs/training.log"
+echo ""
+echo "查看实时日志:"
+echo "  tail -f ~/workspace/btcquant/storage/logs/training.log"
+echo ""
+echo "训练完成后会自动传输模型并发送邮件通知"
 EOF
+        
         print_success "GPU训练已启动"
         print_info "使用 'btcquant train logs' 查看日志"
         print_info "使用 'btcquant train status' 查看状态"
@@ -605,10 +650,10 @@ else
 fi
 
 # 检查最新模型
-if [ -d ~/workspace/btcquant/predict/models ]; then
+if [ -d ~/workspace/btcquant/storage/models ]; then
     echo ""
     echo "最新模型:"
-    ls -lht ~/workspace/btcquant/predict/models/ | head -5
+    ls -lht ~/workspace/btcquant/storage/models/ | head -5
 fi
 EOF
 }
@@ -655,7 +700,7 @@ train_sync_model() {
     if [ -z "$model_dir" ]; then
         # 自动检测最新模型
         print_info "检测最新模型..."
-        model_dir=$(ssh $GPU_SERVER "ls -t ~/workspace/btcquant/predict/models/ | grep tcn_ | head -1")
+        model_dir=$(ssh $GPU_SERVER "ls -t ~/workspace/btcquant/storage/models/ | grep tcn_ | head -1")
         if [ -z "$model_dir" ]; then
             print_error "未找到模型"
             exit 1
@@ -665,9 +710,23 @@ train_sync_model() {
     
     print_header "同步模型到CPU服务器"
     ssh $GPU_SERVER << EOF
-scp -r ~/workspace/btcquant/predict/models/$model_dir $CPU_SERVER:$PROJECT_DIR/predict/models/
+scp -r ~/workspace/btcquant/storage/models/$model_dir $CPU_SERVER:$PROJECT_DIR/storage/models/
 EOF
     print_success "模型同步完成: $model_dir"
+}
+
+# 同步配置文件到GPU服务器
+train_sync_config() {
+    print_header "同步配置文件到GPU服务器"
+    
+    if [ ! -f "config.yaml" ]; then
+        print_error "配置文件不存在: config.yaml"
+        print_info "请先复制并配置: cp config.yaml.example config.yaml"
+        return 1
+    fi
+    
+    scp config.yaml $GPU_SERVER:~/workspace/btcquant/
+    print_success "配置文件同步完成"
 }
 
 # GPU训练命令（保留向后兼容）
@@ -699,28 +758,43 @@ cmd_gpu() {
 gpu_setup() {
     print_header "初始化GPU环境"
     ssh $GPU_SERVER << 'EOF'
-cd ~/workspace/btcquant
+set -e
 
-# 检查conda
-if ! command -v conda &> /dev/null; then
-    echo "安装Miniconda..."
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-    bash Miniconda3-latest-Linux-x86_64.sh -b
-    ~/miniconda3/bin/conda init bash
-    source ~/.bashrc
+# 安装git
+if ! command -v git &> /dev/null; then
+    echo "安装Git..."
+    yum install -y git || apt-get install -y git
 fi
 
-# 创建环境
-source ~/miniconda3/etc/profile.d/conda.sh
-if ! conda env list | grep -q btc_quant; then
-    echo "创建conda环境..."
-    conda create -n btc_quant python=3.9 -y
+# 克隆或更新代码
+if [ -d ~/workspace/btcquant ]; then
+    echo "更新代码..."
+    cd ~/workspace/btcquant
+    git pull origin main
+else
+    echo "克隆代码..."
+    mkdir -p ~/workspace
+    cd ~/workspace
+    git clone https://github.com/ningersweet/btcquant.git
+    cd btcquant
+fi
+
+# 创建venv环境
+if [ ! -d ~/workspace/btcquant/venv ]; then
+    echo "创建Python虚拟环境..."
+    cd ~/workspace/btcquant
+    python3 -m venv venv
 fi
 
 # 激活环境并安装依赖
-conda activate btc_quant
-cd predict
-pip install -r requirements.txt
+echo "安装依赖..."
+cd ~/workspace/btcquant
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r predict/requirements.txt
+
+# 创建存储目录
+mkdir -p storage/logs storage/cache storage/models
 
 echo "✓ GPU环境初始化完成"
 EOF

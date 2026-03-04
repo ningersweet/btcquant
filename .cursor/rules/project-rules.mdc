@@ -40,70 +40,147 @@
 
 ### 配置文件管理
 
-**重要：配置文件不在Git中，需要手动同步！**
+**重要：配置文件不在Git中，需要通过SCP传输！**
 
 配置文件包含敏感信息（如API密钥、邮箱密码等），不会提交到Git仓库。
 
-#### 配置文件列表
-- `config.yaml` - 主配置文件
-- `predict/config.yaml` - 预测服务配置
-- `.env.email` - 邮件通知配置（环境变量）
+#### 统一配置文件
+
+**使用根目录的 config.yaml：**
+- 项目只使用一个配置文件：`config.yaml`
+- 位置：项目根目录
+- 不要在子目录（如predict/）创建独立配置
+
+#### 配置文件传输
+
+**使用btcquant命令（推荐）：**
+```bash
+# 同步配置到GPU服务器
+btcquant train sync-config
+
+# 启动训练时自动传输
+btcquant train start --gpu  # 自动传输config.yaml
+```
+
+**手动传输：**
+```bash
+# GPU服务器
+scp config.yaml gpu_server:~/workspace/btcquant/
+
+# CPU服务器
+scp config.yaml cpu_server:/root/workspace/btcquant/
+```
 
 #### 首次部署配置
 ```bash
 # 1. 在本地创建配置文件
 cp config.yaml.example config.yaml
-cp predict/config.yaml.example predict/config.yaml
 vim config.yaml  # 编辑配置
 
-# 2. 手动上传到服务器
-scp config.yaml cpu_server:/root/workspace/btcquant/
-scp predict/config.yaml cpu_server:/root/workspace/btcquant/predict/
+# 2. 初始化GPU环境（自动安装git和venv）
+btcquant gpu setup
 
-# 3. GPU服务器配置
-scp config.yaml gpu_server:~/workspace/btcquant/
-scp predict/config.yaml gpu_server:~/workspace/btcquant/predict/
+# 3. 同步配置文件
+btcquant train sync-config
 
-# 4. 邮件配置（GPU服务器）
-scp predict/.env.email gpu_server:~/workspace/btcquant/predict/
+# 4. 配置邮件通知（可选）
+export SMTP_SERVER=smtp.gmail.com
+export SMTP_PORT=587
+export SMTP_USER=your_email@gmail.com
+export SMTP_PASSWORD=your_app_password
+export TO_EMAIL=your_email@gmail.com
 ```
 
 #### 配置文件更新流程
 ```bash
 # 1. 本地修改配置文件
-vim predict/config.yaml
+vim config.yaml
 
-# 2. 手动同步到服务器
-scp predict/config.yaml cpu_server:/root/workspace/btcquant/predict/
-scp predict/config.yaml gpu_server:~/workspace/btcquant/predict/
+# 2. 同步到GPU服务器
+btcquant train sync-config
 
-# 3. 重启相关服务（如需要）
-ssh cpu_server "cd /root/workspace/btcquant && docker-compose restart predict-service"
-```
-
-#### 配置文件备份
-```bash
-# 定期备份配置文件到本地
-scp cpu_server:/root/workspace/btcquant/config.yaml ~/backup/config_cpu_$(date +%Y%m%d).yaml
-scp gpu_server:~/workspace/btcquant/predict/config.yaml ~/backup/config_gpu_$(date +%Y%m%d).yaml
+# 3. 重启训练（如需要）
+btcquant train start --gpu
 ```
 
 #### 注意事项
 - ⚠️ 配置文件包含敏感信息，不要提交到Git
-- ⚠️ 修改配置后必须手动同步到服务器
-- ⚠️ 定期备份配置文件到安全位置
-- ⚠️ 不同环境使用不同的配置文件
+- ⚠️ 只使用根目录的config.yaml，不要创建多个配置文件
+- ⚠️ 修改配置后使用 btcquant train sync-config 同步
+- ⚠️ 训练前会自动传输配置文件
+- ⚠️ GPU服务器使用venv管理Python环境（不使用conda）
 
 ### 代码部署流程
-1. 本地开发完成后推送到 GitHub
-2. `ssh cpu_server` 登录 CPU 服务器执行 `git pull`
-3. **检查配置文件是否需要更新**（手动同步）
-4. 执行 `docker-compose build && docker-compose up -d`
 
-### 数据传输流程
-1. 在 cpu_server 上准备训练数据缓存
-2. 在 cpu_server 上执行 `scp training_data_cache.pkl gpu_server:~/btc_quant/predict/data_cache.pkl` 传输到 GPU 服务器
-3. `ssh gpu_server` 登录 GPU 服务器启动训练
+**CPU服务器：**
+```bash
+# 使用btcquant命令
+btcquant server update cpu
+
+# 或手动更新
+ssh cpu_server
+cd /root/workspace/btcquant
+git pull origin main
+docker-compose restart
+```
+
+**GPU服务器：**
+```bash
+# 首次部署（自动安装git和venv）
+btcquant gpu setup
+
+# 更新代码
+ssh gpu_server
+cd ~/workspace/btcquant
+git pull origin main
+
+# 同步配置文件
+btcquant train sync-config
+```
+
+### GPU训练流程
+
+**完整流程：**
+```bash
+# 1. 准备训练数据（CPU服务器）
+btcquant data prepare
+
+# 2. 同步数据到GPU服务器
+btcquant train sync-data
+
+# 3. 同步配置文件
+btcquant train sync-config
+
+# 4. 启动训练（自动检查已有任务）
+btcquant train start --gpu
+
+# 5. 查看状态
+btcquant train status
+btcquant train logs
+
+# 6. 训练完成后自动：
+#    - 传输模型到CPU服务器
+#    - 发送邮件通知
+```
+
+### 训练任务管理
+
+**自动检查机制：**
+- 启动训练前自动检查是否有正在运行的任务
+- 如果有，提示用户确认是否停止
+- 用户确认后停止旧任务，启动新训练
+
+**手动管理：**
+```bash
+# 查看状态
+btcquant train status
+
+# 停止训练
+btcquant train stop
+
+# 查看日志
+btcquant train logs
+```
 
 ### 注意事项
 - 服务器资源有限，避免运行资源密集型任务

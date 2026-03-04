@@ -18,11 +18,27 @@ class Config:
         初始化配置
         
         Args:
-            config_file: 配置文件路径，默认为 config.yaml
+            config_file: 配置文件路径，默认为根目录的 config.yaml
         """
         self.config_dir = Path(__file__).parent
         self.project_root = self.config_dir.parent
-        self.config_file = config_file or self.config_dir / 'config.yaml'
+        
+        # 默认使用根目录的config.yaml
+        if config_file:
+            self.config_file = Path(config_file)
+        else:
+            # 优先使用根目录的config.yaml
+            root_config = self.project_root / 'config.yaml'
+            if root_config.exists():
+                self.config_file = root_config
+            else:
+                # 尝试使用示例配置
+                example_config = self.project_root / 'config.yaml.example'
+                if example_config.exists():
+                    self.config_file = example_config
+                else:
+                    # 最后尝试predict目录
+                    self.config_file = self.config_dir / 'config.yaml'
         
         # 统一存储目录
         self.storage_dir = self.project_root / 'storage'
@@ -39,13 +55,8 @@ class Config:
         self._config = self._get_default_config()
         
         # 加载配置文件
-        if Path(self.config_file).exists():
+        if self.config_file.exists():
             self.load_from_file(self.config_file)
-        else:
-            # 尝试加载示例配置
-            example_file = self.config_dir.parent / 'config.yaml.example'
-            if example_file.exists():
-                self.load_from_file(example_file)
     
     def _get_default_config(self) -> Dict[str, Any]:
         """获取默认配置"""
