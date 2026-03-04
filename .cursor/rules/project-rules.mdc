@@ -9,7 +9,6 @@
 
 ### CPU 服务器配置
 - **SSH 别名**: cpu_server
-- **IP 地址**: 47.236.94.252
 - **CPU**: 2 核 (系统可用 1 核)
 - **内存**: 4 GB (系统可用 2 GB)
 - **磁盘**: 100 GB
@@ -39,10 +38,67 @@
 - develop: 开发分支
 - feature/*: 功能分支
 
-### 部署流程
+### 配置文件管理
+
+**重要：配置文件不在Git中，需要手动同步！**
+
+配置文件包含敏感信息（如API密钥、邮箱密码等），不会提交到Git仓库。
+
+#### 配置文件列表
+- `config.yaml` - 主配置文件
+- `predict/config.yaml` - 预测服务配置
+- `.env.email` - 邮件通知配置（环境变量）
+
+#### 首次部署配置
+```bash
+# 1. 在本地创建配置文件
+cp config.yaml.example config.yaml
+cp predict/config.yaml.example predict/config.yaml
+vim config.yaml  # 编辑配置
+
+# 2. 手动上传到服务器
+scp config.yaml cpu_server:/root/workspace/btcquant/
+scp predict/config.yaml cpu_server:/root/workspace/btcquant/predict/
+
+# 3. GPU服务器配置
+scp config.yaml gpu_server:~/workspace/btcquant/
+scp predict/config.yaml gpu_server:~/workspace/btcquant/predict/
+
+# 4. 邮件配置（GPU服务器）
+scp predict/.env.email gpu_server:~/workspace/btcquant/predict/
+```
+
+#### 配置文件更新流程
+```bash
+# 1. 本地修改配置文件
+vim predict/config.yaml
+
+# 2. 手动同步到服务器
+scp predict/config.yaml cpu_server:/root/workspace/btcquant/predict/
+scp predict/config.yaml gpu_server:~/workspace/btcquant/predict/
+
+# 3. 重启相关服务（如需要）
+ssh cpu_server "cd /root/workspace/btcquant && docker-compose restart predict-service"
+```
+
+#### 配置文件备份
+```bash
+# 定期备份配置文件到本地
+scp cpu_server:/root/workspace/btcquant/config.yaml ~/backup/config_cpu_$(date +%Y%m%d).yaml
+scp gpu_server:~/workspace/btcquant/predict/config.yaml ~/backup/config_gpu_$(date +%Y%m%d).yaml
+```
+
+#### 注意事项
+- ⚠️ 配置文件包含敏感信息，不要提交到Git
+- ⚠️ 修改配置后必须手动同步到服务器
+- ⚠️ 定期备份配置文件到安全位置
+- ⚠️ 不同环境使用不同的配置文件
+
+### 代码部署流程
 1. 本地开发完成后推送到 GitHub
 2. `ssh cpu_server` 登录 CPU 服务器执行 `git pull`
-3. 执行 `docker-compose build && docker-compose up -d`
+3. **检查配置文件是否需要更新**（手动同步）
+4. 执行 `docker-compose build && docker-compose up -d`
 
 ### 数据传输流程
 1. 在 cpu_server 上准备训练数据缓存
@@ -53,3 +109,4 @@
 - 服务器资源有限，避免运行资源密集型任务
 - 前期不考虑高可用和数据备份
 - 确保日志正常输出用于问题排查
+- **配置文件不在Git中，修改后需手动同步到服务器**

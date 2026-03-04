@@ -216,7 +216,85 @@ git push origin main
 # 4. 部署到服务器
 btcquant server update cpu
 btcquant server update gpu
+
+# 5. 同步配置文件（如果修改了配置）
+scp predict/config.yaml cpu_server:/root/workspace/btcquant/predict/
+scp predict/config.yaml gpu_server:~/workspace/btcquant/predict/
 ```
+
+### 配置文件管理流程
+
+**重要：配置文件不在Git中，需要手动同步！**
+
+#### 为什么配置文件不在Git中？
+- 包含敏感信息（API密钥、数据库密码、邮箱密码等）
+- 不同环境使用不同配置
+- 避免泄露到公开仓库
+
+#### 配置文件列表
+```
+config.yaml              # 主配置文件
+predict/config.yaml      # 预测服务配置
+predict/.env.email       # 邮件通知配置
+```
+
+#### 首次部署配置
+```bash
+# 1. 本地创建配置文件
+cp config.yaml.example config.yaml
+cp predict/config.yaml.example predict/config.yaml
+vim config.yaml  # 编辑配置
+
+# 2. 上传到CPU服务器
+scp config.yaml cpu_server:/root/workspace/btcquant/
+scp predict/config.yaml cpu_server:/root/workspace/btcquant/predict/
+
+# 3. 上传到GPU服务器
+scp config.yaml gpu_server:~/workspace/btcquant/
+scp predict/config.yaml gpu_server:~/workspace/btcquant/predict/
+
+# 4. 邮件配置（GPU服务器）
+cat > predict/.env.email << EOF
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your_email@gmail.com
+SMTP_PASSWORD=your_app_password
+TO_EMAIL=your_email@gmail.com
+EOF
+
+scp predict/.env.email gpu_server:~/workspace/btcquant/predict/
+```
+
+#### 配置文件更新流程
+```bash
+# 1. 本地修改配置
+vim predict/config.yaml
+
+# 2. 同步到服务器
+scp predict/config.yaml cpu_server:/root/workspace/btcquant/predict/
+scp predict/config.yaml gpu_server:~/workspace/btcquant/predict/
+
+# 3. 重启服务（如需要）
+ssh cpu_server "cd /root/workspace/btcquant && docker-compose restart predict-service"
+```
+
+#### 配置文件备份
+```bash
+# 定期备份配置文件
+mkdir -p ~/backup/btcquant_config
+scp cpu_server:/root/workspace/btcquant/config.yaml ~/backup/btcquant_config/config_cpu_$(date +%Y%m%d).yaml
+scp gpu_server:~/workspace/btcquant/predict/config.yaml ~/backup/btcquant_config/config_gpu_$(date +%Y%m%d).yaml
+
+# 加密备份（推荐）
+tar -czf - ~/backup/btcquant_config | openssl enc -aes-256-cbc -out btcquant_config_$(date +%Y%m%d).tar.gz.enc
+```
+
+#### 检查清单
+- [ ] 配置文件已创建并编辑
+- [ ] 配置文件已同步到所有服务器
+- [ ] 敏感信息已正确填写
+- [ ] 配置文件已备份到安全位置
+- [ ] 配置文件未提交到Git
 
 ### GPU训练流程
 
