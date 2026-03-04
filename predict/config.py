@@ -65,7 +65,9 @@ class TrainConfig:
     LAMBDA_CLS = float(os.getenv('TRAIN_LAMBDA_CLS', '1.0'))
     LAMBDA_REG = float(os.getenv('TRAIN_LAMBDA_REG', '0.5'))
     
-    DEVICE = os.getenv('TRAIN_DEVICE', 'cpu')
+    # 自动检测设备：优先使用GPU
+    import torch
+    DEVICE = os.getenv('TRAIN_DEVICE', 'cuda' if torch.cuda.is_available() else 'cpu')
 
 
 class InferenceConfig:
