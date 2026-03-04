@@ -16,6 +16,16 @@ env/
 *.env.local
 config.yaml
 
+# 存储目录（统一存放运行时数据）
+storage/logs/*.log
+storage/cache/*.pkl
+storage/cache/*.db
+storage/models/tcn_*/
+!storage/.gitkeep
+!storage/logs/.gitkeep
+!storage/cache/.gitkeep
+!storage/README.md
+
 # 数据和模型文件（太大，不提交）
 *.pkl
 *.pth
@@ -30,6 +40,8 @@ models/tcn_fast_*/
 *.log
 nohup.out
 training_*.log
+logs/*.log
+!logs/.gitkeep
 
 # 临时文件
 *.tar.gz

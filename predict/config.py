@@ -21,7 +21,19 @@ class Config:
             config_file: 配置文件路径，默认为 config.yaml
         """
         self.config_dir = Path(__file__).parent
+        self.project_root = self.config_dir.parent
         self.config_file = config_file or self.config_dir / 'config.yaml'
+        
+        # 统一存储目录
+        self.storage_dir = self.project_root / 'storage'
+        self.logs_dir = self.storage_dir / 'logs'
+        self.cache_dir = self.storage_dir / 'cache'
+        self.models_dir = self.storage_dir / 'models'
+        
+        # 创建目录
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.models_dir.mkdir(parents=True, exist_ok=True)
         
         # 默认配置
         self._config = self._get_default_config()
@@ -271,6 +283,34 @@ class Config:
     @property
     def to_email(self) -> str:
         return os.getenv('TO_EMAIL', self.smtp_user)
+    
+    # 路径配置
+    @property
+    def logs_directory(self) -> Path:
+        """日志目录"""
+        return self.logs_dir
+    
+    @property
+    def cache_directory(self) -> Path:
+        """缓存目录"""
+        return self.cache_dir
+    
+    @property
+    def models_directory(self) -> Path:
+        """模型目录"""
+        return self.models_dir
+    
+    def get_log_path(self, log_name: str) -> Path:
+        """获取日志文件路径"""
+        return self.logs_dir / log_name
+    
+    def get_cache_path(self, cache_name: str) -> Path:
+        """获取缓存文件路径"""
+        return self.cache_dir / cache_name
+    
+    def get_model_path(self, model_name: str) -> Path:
+        """获取模型目录路径"""
+        return self.models_dir / model_name
     
     def get(self, key: str, default: Any = None) -> Any:
         """

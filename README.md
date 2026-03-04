@@ -163,6 +163,10 @@ btcquant docker monitor           # 监控容器资源
 ```
 btc_quant/
 ├── btcquant                    # 统一命令行工具
+├── storage/                    # 统一存储目录
+│   ├── logs/                  # 所有日志文件
+│   ├── cache/                 # 数据缓存文件
+│   └── models/                # 训练好的模型
 ├── common/                     # 公共模块
 ├── data/                       # 数据服务
 │   ├── src/                   # 数据服务源码
@@ -173,8 +177,6 @@ btc_quant/
 │   │   ├── tcn_model.py       # TCN模型
 │   │   ├── model_trainer.py   # 模型训练器
 │   │   └── backtest.py        # 回测引擎
-│   ├── models/                # 训练好的模型
-│   ├── logs/                  # 日志文件
 │   ├── train.py               # 统一训练脚本
 │   ├── train_with_notification.py  # 带通知的训练
 │   ├── post_training.py       # 训练后处理

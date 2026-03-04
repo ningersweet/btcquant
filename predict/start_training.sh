@@ -54,8 +54,8 @@ if [ -z "$SMTP_USER" ] || [ -z "$SMTP_PASSWORD" ]; then
     echo -e "${YELLOW}设置方法: export \$(cat .env.email | xargs)${NC}"
 fi
 
-# 创建日志目录
-mkdir -p logs
+# 创建存储目录
+mkdir -p ../storage/logs ../storage/cache ../storage/models
 
 # 选择训练模式
 echo ""
@@ -99,16 +99,16 @@ if [ "$run_mode" = "2" ]; then
     fi
     
     # 保存PID
-    nohup $CMD > logs/training.log 2>&1 &
+    nohup $CMD > ../storage/logs/training.log 2>&1 &
     PID=$!
     echo $PID > ~/training.pid
     
     echo -e "${GREEN}✓ 训练已在后台启动${NC}"
     echo -e "  PID: ${PID}"
-    echo -e "  日志文件: $(pwd)/logs/training.log"
+    echo -e "  日志文件: $(pwd)/../storage/logs/training.log"
     echo ""
     echo "查看实时日志:"
-    echo -e "  ${YELLOW}tail -f $(pwd)/logs/training.log${NC}"
+    echo -e "  ${YELLOW}tail -f $(pwd)/../storage/logs/training.log${NC}"
     echo ""
     echo "检查进程状态:"
     echo -e "  ${YELLOW}ps -p $PID${NC}"

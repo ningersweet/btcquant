@@ -50,10 +50,10 @@ python train.py --mode incremental --base-model models/tcn_20260305_005329/best_
 
 ```bash
 # 实时查看
-tail -f logs/training.log
+tail -f ../storage/logs/training.log
 
 # 查看最后100行
-tail -100 logs/training.log
+tail -100 ../storage/logs/training.log
 ```
 
 ## 5. 使用模型进行推理

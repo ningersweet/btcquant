@@ -5,12 +5,14 @@
 ```
 btc_quant/
 ├── btcquant                    # 统一命令行工具（主入口）
+├── storage/                    # 统一存储目录（运行时数据）
+│   ├── logs/                  # 所有日志文件
+│   ├── cache/                 # 数据缓存文件
+│   └── models/                # 训练好的模型（可选）
 ├── common/                     # 公共模块
 ├── data/                       # 数据服务
 ├── predict/                    # 预测服务
 │   ├── src/                   # 核心代码
-│   ├── models/                # 训练好的模型
-│   ├── logs/                  # 日志文件（统一存放）
 │   ├── train.py               # 统一训练脚本
 │   ├── train_with_notification.py  # 带通知的训练脚本
 │   ├── post_training.py       # 训练后处理脚本
@@ -62,31 +64,54 @@ python train_incremental.py
 
 ### 3. 日志管理
 
-**所有日志统一存放在 `logs/` 目录**。
+**所有日志统一存放在 `storage/logs/` 目录**。
 
 ```
-predict/logs/
+storage/logs/
 ├── training.log              # 训练日志
 ├── inference.log             # 推理日志
-└── backtest.log              # 回测日志
+├── backtest.log              # 回测日志
+└── api.log                   # API日志
 ```
 
 **日志配置：**
 ```python
 import logging
-from pathlib import Path
+from config import Config
 
-log_dir = Path(__file__).parent / 'logs'
-log_dir.mkdir(exist_ok=True)
+config = Config()
+log_file = config.get_log_path('training.log')
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(log_dir / 'training.log'),
+        logging.FileHandler(log_file),
         logging.StreamHandler()
     ]
 )
+```
+
+**数据缓存管理：**
+
+所有数据缓存统一存放在 `storage/cache/` 目录：
+
+```python
+from config import Config
+
+config = Config()
+
+# 获取缓存路径
+cache_file = config.get_cache_path('data_cache.pkl')
+
+# 保存缓存
+import pickle
+with open(cache_file, 'wb') as f:
+    pickle.dump(data, f)
+
+# 加载缓存
+with open(cache_file, 'rb') as f:
+    data = pickle.load(f)
 ```
 
 ### 4. 配置管理
@@ -150,12 +175,26 @@ print(train_config.BATCH_SIZE)
 
 **模型命名规范：**
 ```
-models/tcn_YYYYMMDD_HHMMSS/
+storage/models/tcn_YYYYMMDD_HHMMSS/
 ├── best_model.pt              # 最佳模型
 ├── final_model.pt             # 最终模型（可选）
 ├── model.onnx                 # ONNX模型（可选）
 ├── training_history.json      # 训练历史
 └── backtest_metrics.json      # 回测指标
+```
+
+**使用配置获取模型路径：**
+```python
+from config import Config
+
+config = Config()
+
+# 创建新模型目录
+model_dir = config.get_model_path('tcn_20260305_120000')
+model_dir.mkdir(parents=True, exist_ok=True)
+
+# 保存模型
+torch.save(model.state_dict(), model_dir / 'best_model.pt')
 ```
 
 ## 工作流程规范
@@ -457,6 +496,10 @@ btcquant server logs cpu data-service
 
 # 查看容器日志
 btcquant docker logs data-service
+
+# 直接查看日志文件
+tail -f storage/logs/training.log
+tail -100 storage/logs/training.log
 ```
 
 ### 2. 问题排查

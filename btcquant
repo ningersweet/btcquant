@@ -573,7 +573,7 @@ echo $PID > ~/training.pid
 
 echo "✓ 训练已在后台启动"
 echo "  PID: $PID"
-echo "  日志: ~/workspace/btcquant/predict/logs/training.log"
+echo "  日志: ~/workspace/btcquant/storage/logs/training.log"
 EOF
         print_success "GPU训练已启动"
         print_info "使用 'btcquant train logs' 查看日志"
@@ -616,7 +616,7 @@ EOF
 # 查看训练日志
 train_logs() {
     print_header "训练日志"
-    ssh $GPU_SERVER "tail -100 ~/workspace/btcquant/predict/logs/training.log"
+    ssh $GPU_SERVER "tail -100 ~/workspace/btcquant/storage/logs/training.log"
 }
 
 # 停止训练

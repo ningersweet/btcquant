@@ -26,14 +26,14 @@ from src.backtest import Backtester
 from config import Config
 
 # 配置日志
-log_dir = Path(__file__).parent / 'logs'
-log_dir.mkdir(exist_ok=True)
+config = Config()
+log_file = config.get_log_path('training.log')
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(log_dir / 'training.log'),
+        logging.FileHandler(log_file),
         logging.StreamHandler()
     ]
 )
@@ -185,13 +185,13 @@ def main():
     
     # 创建模型保存目录
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    model_dir = Path(__file__).parent / 'models' / f'tcn_{timestamp}'
+    model_dir = config.get_model_path(f'tcn_{timestamp}')
     model_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"模型保存目录: {model_dir}")
     
     # 加载数据
     if args.mode == 'cache':
-        cache_file = Path(args.cache_file)
+        cache_file = config.get_cache_path(args.cache_file)
         if not cache_file.exists():
             logger.error(f"缓存文件不存在: {cache_file}")
             logger.info("请先运行: btcquant data prepare")
