@@ -188,38 +188,68 @@ btc_quant/
 
 ## 🔧 配置
 
-### 环境变量
+### YAML配置文件
 
 复制配置文件并修改：
 
 ```bash
 # 预测服务配置
-cp predict/.env.example predict/.env
-vim predict/.env
+cp predict/config.yaml.example predict/config.yaml
+vim predict/config.yaml
 
-# 邮件通知配置（可选）
-cp predict/.env.email.example predict/.env.email
-vim predict/.env.email
+# 根目录配置（可选）
+cp config.yaml.example config.yaml
+vim config.yaml
+```
+
+### 邮件通知配置
+
+邮件配置通过环境变量设置：
+
+```bash
+# 设置环境变量
+export SMTP_SERVER=smtp.gmail.com
+export SMTP_PORT=587
+export SMTP_USER=your_email@gmail.com
+export SMTP_PASSWORD=your_app_password
+export TO_EMAIL=your_email@gmail.com
+
+# 或者在GPU服务器上
+cd predict
+cat > .env.email << EOF
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your_email@gmail.com
+SMTP_PASSWORD=your_app_password
+TO_EMAIL=your_email@gmail.com
+EOF
+
+# 加载环境变量
+export $(cat .env.email | xargs)
 ```
 
 ### 主要配置项
 
-```bash
-# 标签生成参数
-LABEL_ALPHA=0.0015              # 入场缓冲系数
-LABEL_GAMMA=0.0040              # 止盈缓冲系数
-LABEL_BETA=0.0025               # 止损缓冲系数
-LABEL_THETA_MIN=0.0100          # 最小净利阈值
+```yaml
+predict:
+  # 标签生成参数
+  label:
+    alpha: 0.0015              # 入场缓冲系数
+    gamma: 0.0040              # 止盈缓冲系数
+    beta: 0.0025               # 止损缓冲系数
+    theta_min: 0.0100          # 最小净利阈值
 
-# 模型架构
-MODEL_CHANNELS=64               # TCN通道数
-MODEL_NUM_LAYERS=8              # TCN层数
+  # 模型架构
+  model:
+    channels: 64               # TCN通道数
+    num_layers: 8              # TCN层数
 
-# 训练参数
-TRAIN_BATCH_SIZE=128            # 批次大小
-TRAIN_LEARNING_RATE=0.001       # 学习率
-TRAIN_EPOCHS=100                # 训练轮数
-TRAIN_DEVICE=cuda               # 设备（cuda/cpu）
+  # 训练参数
+  training:
+    batch_size: 128            # 批次大小
+    learning_rate: 0.001       # 学习率
+    epochs: 100                # 训练轮数
+    device: cuda               # 设备（cuda/cpu）
 ```
 
 ## 🎓 训练模式

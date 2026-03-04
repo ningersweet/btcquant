@@ -1,0 +1,61 @@
+# 预测服务配置文件
+# 复制此文件为 config.yaml 并根据实际情况修改
+
+# 数据配置
+data:
+  symbol: "BTCUSDT"
+  interval: "5m"
+
+# 预测服务配置
+predict:
+  # 标签生成配置
+  label:
+    alpha: 0.0015      # 入场缓冲系数 (0.15%)
+    gamma: 0.0040      # 止盈缓冲系数 (0.40%)
+    beta: 0.0025       # 止损缓冲系数 (0.25%)
+    theta_min: 0.0100  # 最小净利阈值 (1.00%)
+    K: 12              # 预测窗口长度 (12根K线 = 1小时)
+  
+  # 数据配置
+  data:
+    window_size: 288   # 输入窗口长度 (288根5分钟K线 = 24小时)
+    interval: "5m"     # K线间隔
+    start_date: "2019-01-01"  # 训练数据起始日期
+    end_date: ""       # 训练数据结束日期 (留空则使用当前日期)
+    train_ratio: 0.7   # 训练集比例
+    val_ratio: 0.15    # 验证集比例
+    test_ratio: 0.15   # 测试集比例
+  
+  # TCN模型架构配置
+  model:
+    input_dim: 5       # 输入特征维度 (OHLCV)
+    channels: 64       # TCN通道数
+    num_layers: 8      # TCN层数
+    kernel_size: 3     # 卷积核大小
+    dropout: 0.2       # Dropout率
+  
+  # 训练配置
+  training:
+    batch_size: 128    # 批次大小
+    learning_rate: 0.001  # 学习率
+    epochs: 100        # 训练轮数
+    early_stopping_patience: 15  # 早停耐心值
+    lambda_cls: 1.0    # 分类损失权重
+    lambda_reg: 0.5    # 回归损失权重
+    device: "cpu"      # 设备 (cpu/cuda)
+  
+  # 推理配置
+  inference:
+    min_confidence: 0.65  # 最小置信度阈值
+    min_space: 0.01       # 最小空间阈值
+  
+  # 服务URL
+  data_service_url: "http://localhost:8001"
+  features_service_url: "http://localhost:8002"
+
+# 邮件通知配置（通过环境变量设置）
+# export SMTP_SERVER=smtp.gmail.com
+# export SMTP_PORT=587
+# export SMTP_USER=your_email@gmail.com
+# export SMTP_PASSWORD=your_app_password
+# export TO_EMAIL=your_email@gmail.com

@@ -91,13 +91,59 @@ logging.basicConfig(
 
 ### 4. 配置管理
 
-**使用 `config.py` 统一管理配置**，支持环境变量和配置文件。
+**使用 YAML 配置文件统一管理配置**。
 
 ```python
 from config import Config
 
-config = Config()  # 自动加载 .env 文件
-config.load_from_file('custom_config.yaml')  # 可选
+# 使用默认配置文件 (config.yaml)
+config = Config()
+
+# 使用指定配置文件
+config = Config('custom_config.yaml')
+
+# 访问配置
+print(config.label_alpha)
+print(config.train_batch_size)
+
+# 使用点号路径访问
+value = config.get('predict.label.alpha')
+
+# 设置配置
+config.set('predict.training.epochs', 50)
+
+# 保存配置
+config.save_to_file('my_config.yaml')
+```
+
+**配置文件示例 (config.yaml)：**
+```yaml
+predict:
+  label:
+    alpha: 0.0015
+    gamma: 0.0040
+  training:
+    batch_size: 128
+    epochs: 100
+    device: "cuda"
+```
+
+**邮件配置（通过环境变量）：**
+```bash
+export SMTP_SERVER=smtp.gmail.com
+export SMTP_PORT=587
+export SMTP_USER=your_email@gmail.com
+export SMTP_PASSWORD=your_app_password
+export TO_EMAIL=your_email@gmail.com
+```
+
+**向后兼容：**
+旧代码仍然可以使用：
+```python
+from config import label_config, train_config
+
+print(label_config.ALPHA)
+print(train_config.BATCH_SIZE)
 ```
 
 ### 5. 模型管理

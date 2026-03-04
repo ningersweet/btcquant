@@ -1,56 +1,62 @@
 # 快速启动指南
 
-## 1. 启动数据服务并同步历史数据
-
-```bash
-# 启动数据服务容器
-docker-compose up -d data-service
-
-# 等待服务启动（约10秒）
-sleep 10
-
-# 同步历史数据（2019年至今）
-curl -X POST "http://localhost:8001/api/v1/sync" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "symbol": "BTCUSDT",
-    "start_date": "2019-01-01"
-  }'
-```
-
-## 2. 安装依赖
+## 1. 安装依赖
 
 ```bash
 cd predict
 pip install -r requirements.txt
 ```
 
-## 3. 配置环境变量
+## 2. 配置
 
 ```bash
-# .env 文件已经创建，可以根据需要调整参数
-# 默认配置已经是推荐值，可以直接使用
-cat .env
+# 复制配置文件
+cp config.yaml.example config.yaml
+
+# 编辑配置（可选，默认配置已经可用）
+vim config.yaml
 ```
 
-## 4. 开始训练
+## 3. 开始训练
+
+### 方式1：使用缓存数据（推荐，快速）
 
 ```bash
-# 完整训练流程（包含数据获取、标签生成、训练、回测）
-python train.py
+# 确保有数据缓存文件
+ls -lh data_cache.pkl
 
-# 训练完成后，模型会保存在 models/tcn_YYYYMMDD_HHMMSS/ 目录
+# 开始训练
+python train.py --mode cache
 ```
 
-## 5. 查看训练结果
+### 方式2：从数据服务加载（完整训练）
 
-训练完成后会自动输出：
-- 训练历史（training_history.json）
-- 最佳模型（best_model.pt）
-- ONNX模型（model.onnx）
-- 回测指标（backtest_metrics.json）
+```bash
+# 确保数据服务运行
+curl http://localhost:8001/health
 
-## 6. 使用模型进行推理
+# 开始训练
+python train.py --mode full
+```
+
+### 方式3：增量训练
+
+```bash
+# 在已有模型基础上继续训练
+python train.py --mode incremental --base-model models/tcn_20260305_005329/best_model.pt
+```
+
+## 4. 查看训练日志
+
+```bash
+# 实时查看
+tail -f logs/training.log
+
+# 查看最后100行
+tail -100 logs/training.log
+```
+
+## 5. 使用模型进行推理
 
 ```python
 from pathlib import Path
@@ -59,7 +65,7 @@ import pandas as pd
 import requests
 
 # 加载模型
-model_dir = Path('models/tcn_20240101_120000')  # 替换为实际目录
+model_dir = Path('models/tcn_20260305_005329')
 inference = load_inference_model(model_dir, use_onnx=True)
 
 # 获取最近的K线数据
@@ -90,6 +96,26 @@ else:
     print("无交易信号")
 ```
 
+## 配置说明
+
+主要配置项在 `config.yaml` 中：
+
+```yaml
+predict:
+  label:
+    alpha: 0.0015      # 入场缓冲系数
+    gamma: 0.0040      # 止盈缓冲系数
+    beta: 0.0025       # 止损缓冲系数
+    theta_min: 0.0100  # 最小净利阈值
+    K: 12              # 预测窗口长度
+  
+  training:
+    batch_size: 128    # 批次大小
+    learning_rate: 0.001  # 学习率
+    epochs: 100        # 训练轮数
+    device: "cpu"      # 设备（cpu/cuda）
+```
+
 ## 故障排查
 
 ### 数据服务无法连接
@@ -105,16 +131,20 @@ docker-compose restart data-service
 ```
 
 ### 训练过程中内存不足
-编辑 `.env` 文件，减小以下参数：
-```
-TRAIN_BATCH_SIZE=64  # 从128减小到64
-DATA_WINDOW_SIZE=144  # 从288减小到144（12小时）
+
+编辑 `config.yaml`，减小以下参数：
+```yaml
+predict:
+  training:
+    batch_size: 64  # 从128减小到64
+  data:
+    window_size: 144  # 从288减小到144（12小时）
 ```
 
 ### 训练速度太慢
-- 使用GPU：修改 `TRAIN_DEVICE=cuda`
-- 减少训练轮数：`TRAIN_EPOCHS=50`
-- 减少模型层数：`MODEL_NUM_LAYERS=6`
+- 使用GPU：修改 `config.yaml` 中 `device: "cuda"`
+- 减少训练轮数：`epochs: 50`
+- 减少模型层数：`num_layers: 6`
 
 ## 超参数优化（可选）
 
