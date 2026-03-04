@@ -15,8 +15,9 @@ import argparse
 
 def main():
     parser = argparse.ArgumentParser(description='训练模型并在完成后自动处理')
-    parser.add_argument('--train-script', type=str, default='train_cached.py', 
-                        help='训练脚本名称')
+    parser.add_argument('--mode', type=str, default='cache',
+                        choices=['full', 'cache', 'incremental'],
+                        help='训练模式')
     parser.add_argument('--cpu-server', type=str, default='cpu_server', 
                         help='CPU服务器SSH别名')
     parser.add_argument('--skip-transfer', action='store_true', 
@@ -27,7 +28,7 @@ def main():
     args = parser.parse_args()
     
     script_dir = Path(__file__).parent
-    train_script = script_dir / args.train_script
+    train_script = script_dir / 'train.py'
     
     if not train_script.exists():
         print(f"错误: 训练脚本不存在: {train_script}")
@@ -39,8 +40,9 @@ def main():
     
     # 执行训练
     try:
+        cmd = [sys.executable, str(train_script), '--mode', args.mode]
         result = subprocess.run(
-            [sys.executable, str(train_script)],
+            cmd,
             cwd=script_dir,
             check=True
         )

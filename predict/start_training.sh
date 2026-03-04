@@ -20,7 +20,7 @@ echo -e "${GREEN}BTC Quant - GPU训练启动脚本${NC}"
 echo -e "${GREEN}========================================${NC}"
 
 # 检查是否在正确的目录
-if [ ! -f "train_cached.py" ]; then
+if [ ! -f "train.py" ]; then
     echo -e "${RED}错误: 请在predict目录下运行此脚本${NC}"
     exit 1
 fi
@@ -36,7 +36,7 @@ echo -e "${YELLOW}激活conda环境...${NC}"
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate btc_quant || {
     echo -e "${RED}错误: 无法激活btc_quant环境${NC}"
-    echo -e "${YELLOW}请先创建环境: conda create -n btc_quant python=3.9${NC}"
+    echo -e "${YELLOW}请先运行: btcquant gpu setup${NC}"
     exit 1
 }
 
@@ -51,31 +51,64 @@ fi
 # 检查环境变量
 if [ -z "$SMTP_USER" ] || [ -z "$SMTP_PASSWORD" ]; then
     echo -e "${YELLOW}警告: 未设置邮件配置，训练完成后不会发送邮件${NC}"
-    echo -e "${YELLOW}请设置环境变量: SMTP_USER, SMTP_PASSWORD, TO_EMAIL${NC}"
+    echo -e "${YELLOW}设置方法: export \$(cat .env.email | xargs)${NC}"
 fi
+
+# 创建日志目录
+mkdir -p logs
 
 # 选择训练模式
 echo ""
 echo "请选择训练模式:"
+echo "  1) 使用缓存数据（推荐，快速）"
+echo "  2) 完整训练（从数据服务加载）"
+echo "  3) 增量训练（在已有模型基础上）"
+read -p "请输入选择 [1/2/3]: " train_mode
+
+case $train_mode in
+    1)
+        MODE="cache"
+        ;;
+    2)
+        MODE="full"
+        ;;
+    3)
+        MODE="incremental"
+        read -p "请输入基础模型路径: " base_model
+        ;;
+    *)
+        MODE="cache"
+        ;;
+esac
+
+# 选择运行模式
+echo ""
+echo "请选择运行模式:"
 echo "  1) 前台运行（可查看实时日志）"
 echo "  2) 后台运行（推荐，可关闭SSH）"
-read -p "请输入选择 [1/2]: " mode
+read -p "请输入选择 [1/2]: " run_mode
 
-if [ "$mode" = "2" ]; then
+if [ "$run_mode" = "2" ]; then
     # 后台运行
     echo -e "${GREEN}启动后台训练...${NC}"
     
+    # 构建命令
+    CMD="python train_with_notification.py --mode $MODE"
+    if [ "$train_mode" = "3" ] && [ -n "$base_model" ]; then
+        CMD="$CMD --base-model $base_model"
+    fi
+    
     # 保存PID
-    nohup python train_with_notification.py > training.log 2>&1 &
+    nohup $CMD > logs/training.log 2>&1 &
     PID=$!
     echo $PID > ~/training.pid
     
     echo -e "${GREEN}✓ 训练已在后台启动${NC}"
     echo -e "  PID: ${PID}"
-    echo -e "  日志文件: $(pwd)/training.log"
+    echo -e "  日志文件: $(pwd)/logs/training.log"
     echo ""
     echo "查看实时日志:"
-    echo -e "  ${YELLOW}tail -f $(pwd)/training.log${NC}"
+    echo -e "  ${YELLOW}tail -f $(pwd)/logs/training.log${NC}"
     echo ""
     echo "检查进程状态:"
     echo -e "  ${YELLOW}ps -p $PID${NC}"
@@ -88,7 +121,12 @@ if [ "$mode" = "2" ]; then
 else
     # 前台运行
     echo -e "${GREEN}启动前台训练...${NC}"
-    python train_with_notification.py
+    
+    if [ "$train_mode" = "3" ] && [ -n "$base_model" ]; then
+        python train_with_notification.py --mode $MODE --base-model $base_model
+    else
+        python train_with_notification.py --mode $MODE
+    fi
 fi
 
 echo -e "${GREEN}========================================${NC}"

@@ -1,295 +1,243 @@
+#!/usr/bin/env python3
 """
-主训练脚本
+统一训练脚本
 
-完整的训练流程：数据获取 -> 标签生成 -> 模型训练 -> 回测评估
+支持多种训练模式：
+- 完整训练：使用所有历史数据
+- 缓存训练：使用预先准备的数据缓存
+- 增量训练：在已有模型基础上继续训练
 """
 
-import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-import pandas as pd
-import numpy as np
-import torch
+import sys
+import argparse
 import logging
 from pathlib import Path
 from datetime import datetime
-import requests
-import argparse
 
+# 添加src目录到路径
+sys.path.insert(0, str(Path(__file__).parent / 'src'))
+
+from src.data_loader import load_klines_from_service, split_data
 from src.label_generator import LabelGenerator
-from src.tcn_model import create_tcn_model
-from src.data_loader import split_data, create_dataloaders
 from src.model_trainer import ModelTrainer
-from src.backtest import BacktestEngine
-from config import (
-    label_config, data_config, model_config, 
-    train_config, service_config
-)
+from src.tcn_model import TCNModel
+from src.backtest import Backtester
+from config import Config
 
 # 配置日志
+log_dir = Path(__file__).parent / 'logs'
+log_dir.mkdir(exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_dir / 'training.log'),
+        logging.StreamHandler()
+    ]
 )
+
 logger = logging.getLogger(__name__)
 
 
-def fetch_historical_data(
-    symbol: str = "BTCUSDT",
-    interval: str = "5m",
-    start_date: str = "2019-01-01",
-    end_date: str = None
-) -> pd.DataFrame:
-    """
-    从数据服务获取历史数据
+def load_data_from_cache(cache_file: Path):
+    """从缓存加载数据"""
+    import pickle
     
-    Args:
-        symbol: 交易对
-        interval: K线间隔
-        start_date: 开始日期
-        end_date: 结束日期（None则使用当前日期）
-        
-    Returns:
-        K线数据DataFrame
-    """
-    logger.info(f"Fetching historical data from {start_date} to {end_date or 'now'}...")
+    logger.info(f"从缓存加载数据: {cache_file}")
+    with open(cache_file, 'rb') as f:
+        data = pickle.load(f)
     
-    # 转换日期为时间戳
-    start_ts = int(pd.Timestamp(start_date).timestamp() * 1000)
-    if end_date:
-        end_ts = int(pd.Timestamp(end_date).timestamp() * 1000)
-    else:
-        end_ts = int(pd.Timestamp.now().timestamp() * 1000)
-    
-    # 调用数据服务API（分批获取）
-    url = f"{service_config.DATA_SERVICE_URL}/api/v1/klines"
-    
-    # 禁用代理，直接连接localhost
-    session = requests.Session()
-    session.trust_env = False  # 忽略环境变量中的代理设置
-    
-    all_data = []
-    batch_size = 1500  # 每批最多1500条
-    current_start = start_ts
-    
-    try:
-        while current_start < end_ts:
-            params = {
-                'symbol': symbol,
-                'interval': interval,
-                'start_time': current_start,
-                'end_time': end_ts,
-                'limit': batch_size
-            }
-            
-            logger.info(f"Fetching batch starting from {pd.Timestamp(current_start, unit='ms')}")
-            response = session.get(url, params=params, timeout=120)  # 增加超时到120秒
-            response.raise_for_status()
-            
-            result = response.json()
-            if result['code'] != 0:
-                raise Exception(f"API error: {result.get('message', 'Unknown error')}")
-            
-            batch_data = result['data']
-            if not batch_data:
-                break
-            
-            all_data.extend(batch_data)
-            
-            # 更新下一批的起始时间
-            last_timestamp = batch_data[-1]['timestamp']
-            current_start = last_timestamp + 1
-            
-            # 如果返回的数据少于batch_size，说明已经获取完了
-            if len(batch_data) < batch_size:
-                break
-        
-        if not all_data:
-            raise Exception("No data fetched")
-        
-        df = pd.DataFrame(all_data)
-        
-        # 转换数据类型
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df = df.set_index('timestamp')
-        
-        # 选择需要的列
-        df = df[['open', 'high', 'low', 'close', 'volume']].astype(float)
-        
-        # 去重并排序
-        df = df[~df.index.duplicated(keep='first')].sort_index()
-        
-        logger.info(f"Fetched {len(df)} K-lines from {df.index[0]} to {df.index[-1]}")
-        
-        return df
-        
-    except Exception as e:
-        logger.error(f"Failed to fetch data: {e}")
-        raise
+    logger.info(f"数据加载完成: {len(data['df'])} 条记录")
+    return data['df'], data.get('train_df'), data.get('val_df'), data.get('test_df')
 
 
-def main(args):
-    """主训练流程"""
+def load_data_from_service(config: Config):
+    """从数据服务加载数据"""
+    logger.info("从数据服务加载K线数据...")
     
-    logger.info("="*60)
-    logger.info("BTC Quant - TCN Model Training")
-    logger.info("="*60)
-    
-    # 1. 获取历史数据
-    logger.info("\n[Step 1/6] Fetching historical data...")
-    try:
-        df = fetch_historical_data(
-            symbol="BTCUSDT",
-            interval=data_config.INTERVAL,
-            start_date=data_config.START_DATE,
-            end_date=data_config.END_DATE
-        )
-    except Exception as e:
-        logger.error(f"Failed to fetch data from service: {e}")
-        logger.info("Please ensure data service is running: docker-compose up -d data-service")
-        return
-    
-    # 2. 生成标签
-    logger.info("\n[Step 2/6] Generating labels...")
-    label_generator = LabelGenerator(
-        alpha=label_config.ALPHA,
-        gamma=label_config.GAMMA,
-        beta=label_config.BETA,
-        theta_min=label_config.THETA_MIN,
-        K=label_config.K
+    df = load_klines_from_service(
+        symbol=config.symbol,
+        interval=config.data_interval,
+        start_date=config.data_start_date,
+        end_date=config.data_end_date,
+        service_url=config.data_service_url
     )
     
-    df_with_labels = label_generator.generate_labels(df)
+    logger.info(f"数据加载完成: {len(df)} 条记录")
+    logger.info(f"时间范围: {df.index[0]} 至 {df.index[-1]}")
     
-    # 移除没有标签的样本（前面和后面的K根）
-    valid_mask = df_with_labels.index < (df_with_labels.index[-1] - pd.Timedelta(minutes=5*label_config.K))
-    df_with_labels = df_with_labels[valid_mask]
+    return df, None, None, None
+
+
+def generate_labels(df, config: Config):
+    """生成训练标签"""
+    logger.info("生成训练标签...")
     
-    logger.info(f"Valid samples after label generation: {len(df_with_labels)}")
-    
-    # 3. 划分数据集
-    logger.info("\n[Step 3/6] Splitting dataset...")
-    train_df, val_df, test_df = split_data(
-        df_with_labels,
-        train_ratio=data_config.TRAIN_RATIO,
-        val_ratio=data_config.VAL_RATIO,
-        test_ratio=data_config.TEST_RATIO
+    generator = LabelGenerator(
+        alpha=config.label_alpha,
+        gamma=config.label_gamma,
+        beta=config.label_beta,
+        theta_min=config.label_theta_min,
+        K=config.label_K,
+        n_jobs=-1  # 使用所有CPU核心
     )
     
-    # 创建数据加载器
-    train_loader, val_loader, test_loader = create_dataloaders(
-        train_df, val_df, test_df,
-        window_size=data_config.WINDOW_SIZE,
-        batch_size=train_config.BATCH_SIZE,
-        num_workers=0
+    df_labeled = generator.generate_labels(df)
+    logger.info("标签生成完成")
+    
+    return df_labeled
+
+
+def train_model(train_df, val_df, test_df, config: Config, model_dir: Path, base_model_path=None):
+    """训练模型"""
+    logger.info("开始训练模型...")
+    
+    # 创建模型
+    model = TCNModel(
+        input_dim=config.model_input_dim,
+        num_channels=config.model_channels,
+        num_layers=config.model_num_layers,
+        kernel_size=config.model_kernel_size,
+        dropout=config.model_dropout
     )
     
-    # 4. 创建模型
-    logger.info("\n[Step 4/6] Creating TCN model...")
-    model = create_tcn_model(
-        input_dim=model_config.INPUT_DIM,
-        channels=model_config.CHANNELS,
-        num_layers=model_config.NUM_LAYERS,
-        kernel_size=model_config.KERNEL_SIZE,
-        dropout=model_config.DROPOUT
-    )
+    # 加载基础模型（增量训练）
+    if base_model_path:
+        logger.info(f"加载基础模型: {base_model_path}")
+        import torch
+        model.load_state_dict(torch.load(base_model_path))
     
-    total_params = sum(p.numel() for p in model.parameters())
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    logger.info(f"Total parameters: {total_params:,}")
-    logger.info(f"Trainable parameters: {trainable_params:,}")
-    
-    # 5. 训练模型
-    logger.info("\n[Step 5/6] Training model...")
-    
-    # 创建保存目录
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    save_dir = service_config.MODEL_DIR / f"tcn_{timestamp}"
-    save_dir.mkdir(parents=True, exist_ok=True)
-    
+    # 创建训练器
     trainer = ModelTrainer(
         model=model,
-        device=train_config.DEVICE,
-        learning_rate=train_config.LEARNING_RATE,
-        lambda_cls=train_config.LAMBDA_CLS,
-        lambda_reg=train_config.LAMBDA_REG,
-        theta_min=label_config.THETA_MIN
+        window_size=config.data_window_size,
+        batch_size=config.train_batch_size,
+        learning_rate=config.train_learning_rate,
+        device=config.train_device,
+        lambda_cls=config.train_lambda_cls,
+        lambda_reg=config.train_lambda_reg
     )
     
+    # 训练
     history = trainer.train(
-        train_loader=train_loader,
-        val_loader=val_loader,
-        epochs=train_config.EPOCHS,
-        early_stopping_patience=train_config.EARLY_STOPPING_PATIENCE,
-        save_dir=save_dir
+        train_df=train_df,
+        val_df=val_df,
+        epochs=config.train_epochs,
+        early_stopping_patience=config.train_early_stopping_patience,
+        save_dir=model_dir
     )
     
-    # 6. 回测评估
-    logger.info("\n[Step 6/6] Running backtest on test set...")
+    logger.info("模型训练完成")
     
-    # 加载最佳模型
-    best_model_path = save_dir / 'best_model.pt'
-    trainer.load_model(best_model_path)
+    # 回测
+    if test_df is not None and len(test_df) > 0:
+        logger.info("开始回测...")
+        backtester = Backtester(
+            model=model,
+            window_size=config.data_window_size,
+            device=config.train_device,
+            min_confidence=config.inference_min_confidence,
+            min_space=config.inference_min_space
+        )
+        
+        metrics = backtester.backtest(test_df)
+        
+        # 保存回测结果
+        import json
+        with open(model_dir / 'backtest_metrics.json', 'w') as f:
+            json.dump(metrics, f, indent=2)
+        
+        logger.info("回测完成")
+        logger.info(f"回测指标: {metrics}")
     
-    # 运行回测
-    backtest_engine = BacktestEngine(
-        initial_capital=10000.0,
-        leverage=20,
-        maker_fee=0.0002,
-        taker_fee=0.0004,
-        slippage=0.0001
-    )
-    
-    metrics = backtest_engine.run_backtest(
-        model=model,
-        test_data=test_df,
-        window_size=data_config.WINDOW_SIZE,
-        min_confidence=0.65,
-        device=train_config.DEVICE
-    )
-    
-    backtest_engine.print_metrics(metrics)
-    
-    # 保存回测结果
-    import json
-    with open(save_dir / 'backtest_metrics.json', 'w') as f:
-        json.dump(metrics, f, indent=2)
-    
-    # 导出ONNX模型
-    if not args.skip_onnx:
-        logger.info("\n[Bonus] Exporting to ONNX format...")
-        try:
-            dummy_input = torch.randn(1, data_config.WINDOW_SIZE, model_config.INPUT_DIM)
-            onnx_path = save_dir / 'model.onnx'
-            
-            torch.onnx.export(
-                model,
-                dummy_input,
-                onnx_path,
-                export_params=True,
-                opset_version=11,
-                do_constant_folding=True,
-                input_names=['input'],
-                output_names=['cls_output', 'reg_output'],
-                dynamic_axes={
-                    'input': {0: 'batch_size'},
-                    'cls_output': {0: 'batch_size'},
-                    'reg_output': {0: 'batch_size'}
-                }
-            )
-            logger.info(f"ONNX model saved to {onnx_path}")
-        except Exception as e:
-            logger.warning(f"Failed to export ONNX: {e}")
-    
-    logger.info("\n" + "="*60)
-    logger.info(f"Training completed! Models saved to {save_dir}")
-    logger.info("="*60)
+    return history
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Train TCN model for BTC trading')
-    parser.add_argument('--skip-onnx', action='store_true', help='Skip ONNX export')
+def main():
+    parser = argparse.ArgumentParser(description='TCN模型训练')
+    parser.add_argument('--mode', type=str, default='cache',
+                        choices=['full', 'cache', 'incremental'],
+                        help='训练模式: full=完整训练, cache=使用缓存, incremental=增量训练')
+    parser.add_argument('--cache-file', type=str, default='data_cache.pkl',
+                        help='数据缓存文件路径')
+    parser.add_argument('--base-model', type=str,
+                        help='基础模型路径（增量训练）')
+    parser.add_argument('--config', type=str,
+                        help='配置文件路径')
+    
     args = parser.parse_args()
     
-    main(args)
+    # 加载配置
+    config = Config()
+    if args.config:
+        config.load_from_file(args.config)
+    
+    logger.info("="*60)
+    logger.info("BTC Quant - TCN模型训练")
+    logger.info("="*60)
+    logger.info(f"训练模式: {args.mode}")
+    logger.info(f"设备: {config.train_device}")
+    logger.info(f"批次大小: {config.train_batch_size}")
+    logger.info(f"学习率: {config.train_learning_rate}")
+    logger.info(f"训练轮数: {config.train_epochs}")
+    
+    # 创建模型保存目录
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    model_dir = Path(__file__).parent / 'models' / f'tcn_{timestamp}'
+    model_dir.mkdir(parents=True, exist_ok=True)
+    logger.info(f"模型保存目录: {model_dir}")
+    
+    # 加载数据
+    if args.mode == 'cache':
+        cache_file = Path(args.cache_file)
+        if not cache_file.exists():
+            logger.error(f"缓存文件不存在: {cache_file}")
+            logger.info("请先运行: btcquant data prepare")
+            return 1
+        
+        df, train_df, val_df, test_df = load_data_from_cache(cache_file)
+        
+        # 如果缓存中没有划分好的数据集，则重新划分
+        if train_df is None:
+            logger.info("缓存中没有划分好的数据集，重新划分...")
+            train_df, val_df, test_df = split_data(
+                df,
+                train_ratio=config.data_train_ratio,
+                val_ratio=config.data_val_ratio,
+                test_ratio=config.data_test_ratio
+            )
+    else:
+        df, _, _, _ = load_data_from_service(config)
+        
+        # 生成标签
+        df = generate_labels(df, config)
+        
+        # 划分数据集
+        logger.info("划分数据集...")
+        train_df, val_df, test_df = split_data(
+            df,
+            train_ratio=config.data_train_ratio,
+            val_ratio=config.data_val_ratio,
+            test_ratio=config.data_test_ratio
+        )
+    
+    logger.info(f"训练集: {len(train_df)} 条")
+    logger.info(f"验证集: {len(val_df)} 条")
+    logger.info(f"测试集: {len(test_df)} 条")
+    
+    # 训练模型
+    base_model_path = args.base_model if args.mode == 'incremental' else None
+    history = train_model(train_df, val_df, test_df, config, model_dir, base_model_path)
+    
+    logger.info("="*60)
+    logger.info("训练完成！")
+    logger.info(f"模型保存在: {model_dir}")
+    logger.info("="*60)
+    
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

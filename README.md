@@ -5,10 +5,11 @@
 ## 🎯 项目特点
 
 - ✅ **TCN模型架构**：时间卷积网络，专为时序数据设计
-- ✅ **自动标签生成**：基于数学公式的标签生成器
+- ✅ **自动标签生成**：基于数学公式的标签生成器，支持多核并行
 - ✅ **完整训练流程**：数据获取、特征工程、模型训练、回测评估
 - ✅ **GPU/CPU兼容**：支持GPU训练，CPU推理
-- ✅ **增量训练**：支持模型增量更新
+- ✅ **训练自动化**：训练完成自动传输模型、发送邮件通知
+- ✅ **统一命令行**：btcquant命令管理所有操作
 - ✅ **Docker部署**：完整的Docker化部署方案
 
 ## 📊 系统架构
@@ -24,7 +25,7 @@
 ┌─────────────────────────────────────┐
 │   预测服务 (predict/)                │
 │   - TCN模型训练                      │
-│   - 标签生成                         │
+│   - 标签生成（多核并行）              │
 │   - 模型推理                         │
 │   - 回测引擎                         │
 └─────────────────────────────────────┘
@@ -39,15 +40,247 @@
 
 ## 🚀 快速开始
 
-### 1. 部署到服务器
+### 前置要求
+
+- Python 3.9+
+- Docker & Docker Compose
+- GPU服务器（训练用，可选）
+
+### 1. 安装btcquant命令
 
 ```bash
-# 克隆代码（服务器上）
-cd /root/workspace
+# 克隆代码
 git clone https://github.com/ningersweet/btcquant.git
 cd btcquant
 
-# 或使用一键部署脚本（本地）
+# 添加到PATH（可选）
+chmod +x btcquant
+sudo ln -s $(pwd)/btcquant /usr/local/bin/btcquant
+
+# 查看帮助
+btcquant help
+```
+
+### 2. 部署到CPU服务器
+
+```bash
+# 首次部署
+btcquant server init cpu
+
+# 启动数据服务
+btcquant data start
+
+# 准备训练数据
+btcquant data prepare
+```
+
+### 3. GPU训练
+
+```bash
+# 初始化GPU环境（首次）
+btcquant gpu setup
+
+# 同步训练数据
+btcquant train sync-data
+
+# 启动训练（后台运行）
+btcquant train start --gpu
+
+# 查看训练状态
+btcquant train status
+btcquant train logs
+
+# 训练完成后会自动：
+# - 传输模型到CPU服务器
+# - 发送邮件通知
+```
+
+### 4. 本地开发
+
+```bash
+# 安装依赖
+cd predict
+pip install -r requirements.txt
+
+# 本地训练（使用缓存数据）
+python train.py --mode cache
+
+# 查看训练日志
+tail -f logs/training.log
+```
+
+## 📖 文档
+
+- [快速开始](QUICKSTART.md) - 详细的快速开始指南
+- [项目规范](PROJECT_STANDARDS.md) - 代码规范和工作流程
+- [训练自动化](predict/TRAINING_AUTOMATION.md) - 训练自动化文档
+- [模型设计](predict/模型设计.md) - TCN模型设计文档
+- [特征工程](predict/特征工程.md) - 特征工程文档
+- [部署指南](docs/部署指南.md) - 详细部署指南
+
+## 🛠️ 常用命令
+
+### 服务器管理
+
+```bash
+btcquant server init cpu          # 首次部署到CPU服务器
+btcquant server update gpu        # 更新GPU服务器代码
+btcquant server status cpu        # 查看服务器状态
+btcquant server shell gpu         # SSH登录GPU服务器
+btcquant server logs cpu data-service  # 查看数据服务日志
+```
+
+### 数据管理
+
+```bash
+btcquant data start               # 启动数据服务
+btcquant data prepare             # 准备训练数据
+btcquant data status              # 查看数据服务状态
+```
+
+### 训练管理
+
+```bash
+btcquant train start --gpu        # 启动GPU训练
+btcquant train status             # 查看训练状态
+btcquant train logs               # 查看训练日志
+btcquant train stop               # 停止训练
+btcquant train sync-data          # 同步数据到GPU服务器
+btcquant train sync-model         # 同步模型到CPU服务器
+```
+
+### Docker管理
+
+```bash
+btcquant docker up                # 启动所有容器
+btcquant docker ps                # 查看容器状态
+btcquant docker logs data-service # 查看容器日志
+btcquant docker monitor           # 监控容器资源
+```
+
+## 📁 项目结构
+
+```
+btc_quant/
+├── btcquant                    # 统一命令行工具
+├── common/                     # 公共模块
+├── data/                       # 数据服务
+│   ├── src/                   # 数据服务源码
+│   └── Dockerfile             # 数据服务镜像
+├── predict/                    # 预测服务
+│   ├── src/                   # 核心代码
+│   │   ├── label_generator.py # 标签生成器（多核并行）
+│   │   ├── tcn_model.py       # TCN模型
+│   │   ├── model_trainer.py   # 模型训练器
+│   │   └── backtest.py        # 回测引擎
+│   ├── models/                # 训练好的模型
+│   ├── logs/                  # 日志文件
+│   ├── train.py               # 统一训练脚本
+│   ├── train_with_notification.py  # 带通知的训练
+│   ├── post_training.py       # 训练后处理
+│   └── config.py              # 配置管理
+├── strategy/                   # 策略服务
+├── docs/                      # 文档目录
+├── docker-compose.yml         # Docker编排
+├── PROJECT_STANDARDS.md       # 项目规范
+└── README.md                  # 本文件
+```
+
+## 🔧 配置
+
+### 环境变量
+
+复制配置文件并修改：
+
+```bash
+# 预测服务配置
+cp predict/.env.example predict/.env
+vim predict/.env
+
+# 邮件通知配置（可选）
+cp predict/.env.email.example predict/.env.email
+vim predict/.env.email
+```
+
+### 主要配置项
+
+```bash
+# 标签生成参数
+LABEL_ALPHA=0.0015              # 入场缓冲系数
+LABEL_GAMMA=0.0040              # 止盈缓冲系数
+LABEL_BETA=0.0025               # 止损缓冲系数
+LABEL_THETA_MIN=0.0100          # 最小净利阈值
+
+# 模型架构
+MODEL_CHANNELS=64               # TCN通道数
+MODEL_NUM_LAYERS=8              # TCN层数
+
+# 训练参数
+TRAIN_BATCH_SIZE=128            # 批次大小
+TRAIN_LEARNING_RATE=0.001       # 学习率
+TRAIN_EPOCHS=100                # 训练轮数
+TRAIN_DEVICE=cuda               # 设备（cuda/cpu）
+```
+
+## 🎓 训练模式
+
+### 1. 缓存模式（推荐）
+
+使用预先准备的数据缓存，速度最快：
+
+```bash
+python train.py --mode cache
+```
+
+### 2. 完整模式
+
+从数据服务加载完整数据：
+
+```bash
+python train.py --mode full
+```
+
+### 3. 增量模式
+
+在已有模型基础上继续训练：
+
+```bash
+python train.py --mode incremental --base-model models/tcn_xxx/best_model.pt
+```
+
+## 📊 性能指标
+
+### 标签生成性能
+
+| 数据量 | 单核耗时 | 8核耗时 | 提速比 |
+|--------|---------|---------|--------|
+| 10万 | 8分钟 | 1.5分钟 | 5.3x |
+| 50万 | 42分钟 | 6分钟 | 7.0x |
+| 100万 | 85分钟 | 11分钟 | 7.7x |
+
+### 训练性能
+
+- GPU训练：约1-2小时（100万样本，50 epochs）
+- CPU训练：约8-12小时（100万样本，50 epochs）
+
+## 🤝 贡献
+
+欢迎提交Issue和Pull Request！
+
+## 📄 许可证
+
+MIT License
+
+## 📮 联系方式
+
+- GitHub: [ningersweet/btcquant](https://github.com/ningersweet/btcquant)
+- Email: your_email@example.com
+
+## 🙏 致谢
+
+- Binance API
+- PyTorch
+- TCN论文作者
 ./deploy.sh init
 ```
 

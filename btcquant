@@ -74,12 +74,13 @@ BTC Quant 统一命令行工具 v${VERSION}
   docker logs [服务]             查看容器日志
   docker monitor                 监控容器资源
 
-GPU训练:
-  gpu setup                      初始化GPU环境
-  gpu train                      启动GPU训练
-  gpu deploy                     部署训练任务
-  gpu sync-data                  从CPU服务器同步数据
-  gpu sync-model                 同步模型到CPU服务器
+训练管理:
+  train start [--gpu]            启动训练（默认CPU，--gpu使用GPU）
+  train status                   查看训练状态
+  train logs                     查看训练日志
+  train stop                     停止训练
+  train sync-data                同步训练数据到GPU服务器
+  train sync-model               同步模型到CPU服务器
 
 本地开发:
   local train                    本地训练（快速模式）
@@ -96,7 +97,8 @@ GPU训练:
 示例:
   btcquant server init cpu       # 首次部署到CPU服务器
   btcquant data prepare          # 准备训练数据
-  btcquant gpu train             # 启动GPU训练
+  btcquant train start --gpu     # 启动GPU训练
+  btcquant train logs            # 查看训练日志
   btcquant docker monitor        # 监控容器资源
   btcquant server logs cpu data-service  # 查看数据服务日志
 
@@ -499,7 +501,176 @@ docker_monitor() {
     fi
 }
 
-# GPU训练命令
+# 训练管理命令
+cmd_train() {
+    local action=$1
+    shift
+    
+    case $action in
+        start)
+            train_start "$@"
+            ;;
+        status)
+            train_status
+            ;;
+        logs)
+            train_logs
+            ;;
+        stop)
+            train_stop
+            ;;
+        sync-data)
+            train_sync_data
+            ;;
+        sync-model)
+            train_sync_model "$@"
+            ;;
+        *)
+            print_error "未知训练命令: $action"
+            exit 1
+            ;;
+    esac
+}
+
+# 启动训练
+train_start() {
+    local use_gpu=false
+    
+    # 解析参数
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --gpu)
+                use_gpu=true
+                shift
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+    
+    if [ "$use_gpu" = true ]; then
+        print_header "启动GPU训练"
+        
+        # 检查邮件配置
+        print_info "检查邮件配置..."
+        if [ -z "$SMTP_USER" ] || [ -z "$SMTP_PASSWORD" ]; then
+            print_warning "未设置邮件配置，训练完成后不会发送邮件"
+            print_info "请在GPU服务器上设置: export \$(cat predict/.env.email | xargs)"
+        fi
+        
+        ssh $GPU_SERVER << 'EOF'
+cd ~/workspace/btcquant/predict
+
+# 激活conda环境
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate btc_quant
+
+# 启动后台训练
+nohup python train_with_notification.py > logs/training.log 2>&1 &
+PID=$!
+echo $PID > ~/training.pid
+
+echo "✓ 训练已在后台启动"
+echo "  PID: $PID"
+echo "  日志: ~/workspace/btcquant/predict/logs/training.log"
+EOF
+        print_success "GPU训练已启动"
+        print_info "使用 'btcquant train logs' 查看日志"
+        print_info "使用 'btcquant train status' 查看状态"
+    else
+        print_header "启动本地训练"
+        cd "$SCRIPT_DIR/predict"
+        python train.py
+    fi
+}
+
+# 查看训练状态
+train_status() {
+    print_header "训练状态"
+    
+    # 检查GPU服务器
+    print_info "检查GPU服务器..."
+    ssh $GPU_SERVER << 'EOF'
+if [ -f ~/training.pid ]; then
+    PID=$(cat ~/training.pid)
+    if ps -p $PID > /dev/null 2>&1; then
+        echo "✓ 训练进程运行中 (PID: $PID)"
+        ps -p $PID -o pid,etime,pcpu,pmem,cmd
+    else
+        echo "✗ 训练进程未运行"
+    fi
+else
+    echo "✗ 未找到训练PID文件"
+fi
+
+# 检查最新模型
+if [ -d ~/workspace/btcquant/predict/models ]; then
+    echo ""
+    echo "最新模型:"
+    ls -lht ~/workspace/btcquant/predict/models/ | head -5
+fi
+EOF
+}
+
+# 查看训练日志
+train_logs() {
+    print_header "训练日志"
+    ssh $GPU_SERVER "tail -100 ~/workspace/btcquant/predict/logs/training.log"
+}
+
+# 停止训练
+train_stop() {
+    print_header "停止训练"
+    ssh $GPU_SERVER << 'EOF'
+if [ -f ~/training.pid ]; then
+    PID=$(cat ~/training.pid)
+    if ps -p $PID > /dev/null 2>&1; then
+        kill $PID
+        echo "✓ 训练进程已停止 (PID: $PID)"
+    else
+        echo "✗ 训练进程未运行"
+    fi
+    rm ~/training.pid
+else
+    echo "✗ 未找到训练PID文件"
+fi
+EOF
+}
+
+# 同步训练数据到GPU服务器
+train_sync_data() {
+    print_header "同步训练数据到GPU服务器"
+    ssh $GPU_SERVER << EOF
+scp $CPU_SERVER:$PROJECT_DIR/training_data_cache.pkl ~/workspace/btcquant/predict/data_cache.pkl
+ls -lh ~/workspace/btcquant/predict/data_cache.pkl
+EOF
+    print_success "数据同步完成"
+}
+
+# 同步模型到CPU服务器
+train_sync_model() {
+    local model_dir=$1
+    
+    if [ -z "$model_dir" ]; then
+        # 自动检测最新模型
+        print_info "检测最新模型..."
+        model_dir=$(ssh $GPU_SERVER "ls -t ~/workspace/btcquant/predict/models/ | grep tcn_ | head -1")
+        if [ -z "$model_dir" ]; then
+            print_error "未找到模型"
+            exit 1
+        fi
+        print_info "找到模型: $model_dir"
+    fi
+    
+    print_header "同步模型到CPU服务器"
+    ssh $GPU_SERVER << EOF
+scp -r ~/workspace/btcquant/predict/models/$model_dir $CPU_SERVER:$PROJECT_DIR/predict/models/
+EOF
+    print_success "模型同步完成: $model_dir"
+}
+
+# GPU训练命令（保留向后兼容）
 cmd_gpu() {
     local action=$1
     
@@ -508,19 +679,17 @@ cmd_gpu() {
             gpu_setup
             ;;
         train)
-            gpu_train
-            ;;
-        deploy)
-            gpu_deploy
+            train_start --gpu
             ;;
         sync-data)
-            gpu_sync_data
+            train_sync_data
             ;;
         sync-model)
-            gpu_sync_model
+            train_sync_model "$2"
             ;;
         *)
             print_error "未知GPU命令: $action"
+            print_info "建议使用新命令: btcquant train <action>"
             exit 1
             ;;
     esac
@@ -529,65 +698,33 @@ cmd_gpu() {
 # 初始化GPU环境
 gpu_setup() {
     print_header "初始化GPU环境"
-    ssh $GPU_SERVER << EOF
-cd $PROJECT_DIR
-if [ -f setup_gpu_env.sh ]; then
-    ./setup_gpu_env.sh
-else
-    echo "setup_gpu_env.sh 不存在"
-    exit 1
+    ssh $GPU_SERVER << 'EOF'
+cd ~/workspace/btcquant
+
+# 检查conda
+if ! command -v conda &> /dev/null; then
+    echo "安装Miniconda..."
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+    bash Miniconda3-latest-Linux-x86_64.sh -b
+    ~/miniconda3/bin/conda init bash
+    source ~/.bashrc
 fi
+
+# 创建环境
+source ~/miniconda3/etc/profile.d/conda.sh
+if ! conda env list | grep -q btc_quant; then
+    echo "创建conda环境..."
+    conda create -n btc_quant python=3.9 -y
+fi
+
+# 激活环境并安装依赖
+conda activate btc_quant
+cd predict
+pip install -r requirements.txt
+
+echo "✓ GPU环境初始化完成"
 EOF
     print_success "GPU环境初始化完成"
-}
-
-# 启动GPU训练
-gpu_train() {
-    print_header "启动GPU训练"
-    ssh $GPU_SERVER << EOF
-cd $PROJECT_DIR
-if [ -f deploy_gpu_training.sh ]; then
-    ./deploy_gpu_training.sh
-else
-    echo "deploy_gpu_training.sh 不存在"
-    exit 1
-fi
-EOF
-}
-
-# 部署GPU训练任务
-gpu_deploy() {
-    print_header "部署GPU训练任务"
-    if [ -f "$SCRIPT_DIR/deploy_gpu_training.sh" ]; then
-        "$SCRIPT_DIR/deploy_gpu_training.sh"
-    else
-        print_error "deploy_gpu_training.sh 不存在"
-        exit 1
-    fi
-}
-
-# 从CPU服务器同步数据到GPU服务器
-gpu_sync_data() {
-    print_header "同步训练数据到GPU服务器"
-    ssh $GPU_SERVER << EOF
-scp $CPU_SERVER:$PROJECT_DIR/training_data_cache.pkl $PROJECT_DIR/predict/data_cache.pkl
-ls -lh $PROJECT_DIR/predict/data_cache.pkl
-EOF
-    print_success "数据同步完成"
-}
-
-# 同步模型到CPU服务器
-gpu_sync_model() {
-    print_header "同步模型到CPU服务器"
-    local model_dir=$1
-    if [ -z "$model_dir" ]; then
-        print_error "请指定模型目录"
-        exit 1
-    fi
-    ssh $GPU_SERVER << EOF
-scp -r $PROJECT_DIR/predict/models/$model_dir $CPU_SERVER:$PROJECT_DIR/predict/models/
-EOF
-    print_success "模型同步完成"
 }
 
 # 本地开发命令
@@ -725,6 +862,9 @@ main() {
             ;;
         docker)
             cmd_docker "$@"
+            ;;
+        train)
+            cmd_train "$@"
             ;;
         gpu)
             cmd_gpu "$@"
