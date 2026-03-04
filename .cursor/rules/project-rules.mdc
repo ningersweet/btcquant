@@ -2,10 +2,14 @@
 
 ## 服务器部署信息
 
-### 服务器配置
+### SSH 连接方式
+- **CPU 服务器（数据服务）**: `ssh cpu_server`
+- **GPU 服务器（模型训练）**: `ssh gpu_server`
+- **CPU 服务器可直接访问 GPU 服务器**: 在 cpu_server 上执行 `ssh gpu_server` 即可，便于数据传输
+
+### CPU 服务器配置
+- **SSH 别名**: cpu_server
 - **IP 地址**: 47.236.94.252
-- **登录方式**: ssh root@47.236.94.252
-- **操作系统**: Linux (需登录确认具体版本)
 - **CPU**: 2 核 (系统可用 1 核)
 - **内存**: 4 GB (系统可用 2 GB)
 - **磁盘**: 100 GB
@@ -17,7 +21,7 @@
 - **拉取方式**: HTTPS (服务端使用)
 - **SSH 仓库**: git@github.com:ningersweet/btcquant.git (本地开发使用)
 
-### 资源限制
+### 资源限制（CPU 服务器）
 每个服务的资源限制：
 - CPU: 0.25 核
 - 内存: 512 MB
@@ -37,8 +41,13 @@
 
 ### 部署流程
 1. 本地开发完成后推送到 GitHub
-2. 登录服务器执行 `git pull`
+2. `ssh cpu_server` 登录 CPU 服务器执行 `git pull`
 3. 执行 `docker-compose build && docker-compose up -d`
+
+### 数据传输流程
+1. 在 cpu_server 上准备训练数据缓存
+2. 在 cpu_server 上执行 `scp training_data_cache.pkl gpu_server:~/btc_quant/predict/data_cache.pkl` 传输到 GPU 服务器
+3. `ssh gpu_server` 登录 GPU 服务器启动训练
 
 ### 注意事项
 - 服务器资源有限，避免运行资源密集型任务

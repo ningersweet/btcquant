@@ -11,44 +11,43 @@
 
 ## 📋 服务器部署（3步）
 
-### 步骤1：部署数据服务器
+### 步骤1：部署数据服务器（CPU服务器）
 
 ```bash
-# 在本地Mac执行
-cd /Users/lemonshwang/project/btc_quant
-./git_deploy.sh YOUR_DATA_SERVER_IP data
+# 登录CPU服务器
+ssh cpu_server
+cd /root/workspace/btcquant
 
-# 自动完成：
-# ✓ 克隆代码
-# ✓ 安装Docker
-# ✓ 启动数据服务
+# 拉取最新代码
+git pull origin main
 
-# 然后准备训练数据
-ssh root@YOUR_DATA_SERVER_IP
-cd ~/btc_quant
+# 启动数据服务
+docker-compose up -d data-service
+
+# 准备训练数据
 ./prepare_training_data.sh
 ```
 
 ### 步骤2：部署GPU服务器
 
 ```bash
-# 部署代码
-./git_deploy.sh YOUR_GPU_SERVER_IP gpu
-
-# SSH登录
-ssh root@YOUR_GPU_SERVER_IP
+# 登录GPU服务器
+ssh gpu_server
 cd ~/btc_quant
+
+# 拉取最新代码（首次则 git clone）
+git pull origin main
 
 # 初始化GPU环境（首次，约5-10分钟）
 ./setup_gpu_env.sh
 
 # 重新登录激活环境
 exit
-ssh root@YOUR_GPU_SERVER_IP
+ssh gpu_server
 
-# 获取训练数据
-scp root@DATA_SERVER:~/btc_quant/training_data_cache.pkl \
-    ~/btc_quant/predict/data_cache.pkl
+# 从CPU服务器获取训练数据（在CPU服务器上执行）
+# ssh cpu_server
+# scp /root/workspace/btcquant/training_data_cache.pkl gpu_server:~/btc_quant/predict/data_cache.pkl
 
 # 启动训练
 cd ~/btc_quant
@@ -58,14 +57,11 @@ cd ~/btc_quant
 ### 步骤3：部署推理服务器（可选）
 
 ```bash
-# 部署代码和服务
-./git_deploy.sh YOUR_INFER_SERVER_IP infer
+# 上传训练好的模型到CPU服务器
+scp -r gpu_server:~/btc_quant/predict/models/tcn_* cpu_server:/root/workspace/btcquant/predict/models/
 
-# 上传训练好的模型
-scp -r predict/models/tcn_* root@INFER_SERVER:~/btc_quant/predict/models/
-
-# 重启服务
-ssh root@INFER_SERVER "cd ~/btc_quant && docker-compose restart predict-service"
+# 重启推理服务
+ssh cpu_server "cd /root/workspace/btcquant && docker-compose restart predict-service"
 ```
 
 ## 🔄 后续更新（超快！）
@@ -78,24 +74,26 @@ git add .
 git commit -m "优化训练参数"
 git push
 
-# 更新所有服务器（5秒完成）
-./git_deploy.sh DATA_SERVER_IP data
-./git_deploy.sh GPU_SERVER_IP gpu
-./git_deploy.sh INFER_SERVER_IP infer
+# 更新CPU服务器
+ssh cpu_server "cd /root/workspace/btcquant && git pull origin main"
+
+# 更新GPU服务器
+ssh gpu_server "cd ~/btc_quant && git pull origin main"
 ```
 
 ### 或者在服务器上直接更新
 
 ```bash
-# SSH登录任意服务器
-ssh root@YOUR_SERVER
+# 登录CPU服务器
+ssh cpu_server
+cd /root/workspace/btcquant
+git pull
+docker-compose restart
 
-# 更新代码
+# 登录GPU服务器
+ssh gpu_server
 cd ~/btc_quant
 git pull
-
-# 重启服务（如需要）
-docker-compose restart
 ```
 
 ## 📊 Git vs 打包部署对比
@@ -143,18 +141,17 @@ cd ~/btc_quant
 # weekly_training.sh
 
 # 1. 更新代码
-./git_deploy.sh DATA_SERVER_IP data
-./git_deploy.sh GPU_SERVER_IP gpu
+ssh cpu_server "cd /root/workspace/btcquant && git pull origin main"
+ssh gpu_server "cd ~/btc_quant && git pull origin main"
 
-# 2. 准备数据
-ssh root@DATA_SERVER "cd ~/btc_quant && ./prepare_training_data.sh"
+# 2. 准备数据（在CPU服务器上）
+ssh cpu_server "cd /root/workspace/btcquant && ./prepare_training_data.sh"
 
-# 3. 传输数据
-scp root@DATA_SERVER:~/btc_quant/training_data_cache.pkl \
-    root@GPU_SERVER:~/btc_quant/predict/data_cache.pkl
+# 3. 从CPU服务器传输数据到GPU服务器
+ssh cpu_server "scp /root/workspace/btcquant/training_data_cache.pkl gpu_server:~/btc_quant/predict/data_cache.pkl"
 
 # 4. 启动训练
-ssh root@GPU_SERVER "cd ~/btc_quant && ./deploy_gpu_training.sh"
+ssh gpu_server "cd ~/btc_quant && ./deploy_gpu_training.sh"
 
 # 5. 等待完成并下载模型
 # ...
@@ -164,7 +161,8 @@ ssh root@GPU_SERVER "cd ~/btc_quant && ./deploy_gpu_training.sh"
 
 ### 查看状态
 ```bash
-cd ~/btc_quant
+# 在任一服务器上
+cd ~/btc_quant  # 或 cd /root/workspace/btcquant（CPU服务器）
 git status                    # 查看状态
 git log --oneline -10         # 查看最近10次提交
 git branch -a                 # 查看所有分支
@@ -191,54 +189,39 @@ git checkout main             # 切换回main分支
 
 ## 📝 服务器配置文件
 
-### 数据服务器
+### CPU 服务器 (`ssh cpu_server`)
 ```bash
-~/btc_quant/
+/root/workspace/btcquant/
 ├── docker-compose.yml        # Docker配置
 ├── prepare_training_data.sh  # 数据准备脚本
 └── training_data_cache.pkl   # 训练数据缓存
 ```
 
-### GPU服务器
+### GPU 服务器 (`ssh gpu_server`)
 ```bash
 ~/btc_quant/
 ├── setup_gpu_env.sh          # 环境初始化
 ├── deploy_gpu_training.sh    # 训练启动
 ├── predict/
-│   ├── data_cache.pkl        # 数据缓存
+│   ├── data_cache.pkl        # 数据缓存（从CPU服务器传输）
 │   ├── train_cached.py       # 训练脚本
 │   └── models/               # 训练好的模型
 ```
 
-### 推理服务器
-```bash
-~/btc_quant/
-├── docker-compose.yml        # Docker配置
-└── predict/
-    ├── api.py                # 推理API
-    └── models/               # 模型文件
-```
-
 ## ✅ 部署检查清单
 
-### 数据服务器
-- [ ] 代码已克隆：`cd ~/btc_quant && git status`
+### CPU 服务器 (`ssh cpu_server`)
+- [ ] 代码已克隆：`cd /root/workspace/btcquant && git status`
 - [ ] Docker已安装：`docker --version`
 - [ ] 数据服务运行：`docker-compose ps`
 - [ ] 数据已准备：`ls -lh training_data_cache.pkl`
 
-### GPU服务器
+### GPU 服务器 (`ssh gpu_server`)
 - [ ] 代码已克隆：`cd ~/btc_quant && git status`
 - [ ] GPU可用：`nvidia-smi`
 - [ ] Conda环境：`conda env list | grep btc_quant`
 - [ ] PyTorch GPU：`python -c "import torch; print(torch.cuda.is_available())"`
 - [ ] 数据缓存：`ls -lh predict/data_cache.pkl`
-
-### 推理服务器
-- [ ] 代码已克隆：`cd ~/btc_quant && git status`
-- [ ] Docker已安装：`docker --version`
-- [ ] 推理服务运行：`docker-compose ps`
-- [ ] API可访问：`curl http://localhost:8000/health`
 
 ## 🎊 总结
 
@@ -251,14 +234,15 @@ git checkout main             # 切换回main分支
 
 **快速命令：**
 ```bash
-# 部署
-./git_deploy.sh SERVER_IP data|gpu|infer
+# 更新CPU服务器
+ssh cpu_server "cd /root/workspace/btcquant && git pull"
 
-# 更新
-ssh root@SERVER "cd ~/btc_quant && git pull"
+# 更新GPU服务器
+ssh gpu_server "cd ~/btc_quant && git pull"
 
 # 回滚
-ssh root@SERVER "cd ~/btc_quant && git checkout <commit-id>"
+ssh cpu_server "cd /root/workspace/btcquant && git checkout <commit-id>"
+ssh gpu_server "cd ~/btc_quant && git checkout <commit-id>"
 ```
 
 ---

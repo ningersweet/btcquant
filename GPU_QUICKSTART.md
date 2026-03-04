@@ -13,26 +13,12 @@
 ### 2. 上传代码和初始化
 
 ```bash
-# 在本地Mac执行
-cd /Users/lemonshwang/project/btc_quant
+# SSH登录GPU服务器
+ssh gpu_server
 
-# 打包项目（包含数据缓存）
-tar -czf btc_quant_deploy.tar.gz \
-  predict/ data/ common/ \
-  docker-compose.yml \
-  setup_gpu_env.sh \
-  deploy_gpu_training.sh \
-  GPU_TRAINING_GUIDE.md
-
-# 上传到GPU服务器
-scp btc_quant_deploy.tar.gz root@YOUR_GPU_IP:~/
-
-# SSH登录
-ssh root@YOUR_GPU_IP
-
-# 解压
+# 克隆代码（首次）
 cd ~
-tar -xzf btc_quant_deploy.tar.gz
+git clone https://github.com/ningersweet/btcquant.git btc_quant
 cd btc_quant
 
 # 初始化环境（首次运行，约5-10分钟）
@@ -41,7 +27,11 @@ chmod +x setup_gpu_env.sh
 
 # 重新登录激活环境
 exit
-ssh root@YOUR_GPU_IP
+ssh gpu_server
+
+# 从CPU服务器传输训练数据（在CPU服务器上执行）
+# ssh cpu_server
+# scp /root/workspace/btcquant/training_data_cache.pkl gpu_server:~/btc_quant/predict/data_cache.pkl
 ```
 
 ### 3. 启动训练
@@ -74,13 +64,14 @@ watch -n 5 nvidia-smi
 
 ```bash
 # 1. 下载模型到本地
-scp -r root@YOUR_GPU_IP:~/btc_quant/predict/models/tcn_* \
+scp -r gpu_server:~/btc_quant/predict/models/tcn_* \
   /Users/lemonshwang/project/btc_quant/predict/models/
 
-# 2. 释放GPU实例（在阿里云控制台）
+# 2. 释放GPU实例（如使用按量付费）
 
 # 3. 部署到CPU推理服务
-cd /Users/lemonshwang/project/btc_quant
+ssh cpu_server
+cd /root/workspace/btcquant
 docker-compose restart predict-service
 ```
 

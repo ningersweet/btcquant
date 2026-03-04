@@ -8,33 +8,28 @@
 
 ## 🚀 快速部署（3步完成）
 
-### 步骤1：上传代码到GPU服务器
+### 步骤1：部署代码到GPU服务器
 
 ```bash
-# 在本地Mac上执行
-cd /Users/lemonshwang/project
-tar -czf btc_quant.tar.gz btc_quant/
-scp btc_quant.tar.gz root@YOUR_GPU_SERVER_IP:~/
-scp btc_quant/setup_gpu_env.sh root@YOUR_GPU_SERVER_IP:~/
+# SSH登录GPU服务器
+ssh gpu_server
+
+# 克隆代码（首次）
+cd ~
+git clone https://github.com/ningersweet/btcquant.git btc_quant
+cd btc_quant
 ```
 
 ### 步骤2：初始化GPU环境
 
 ```bash
-# SSH登录到GPU服务器
-ssh root@YOUR_GPU_SERVER_IP
-
-# 解压代码
-cd ~
-tar -xzf btc_quant.tar.gz
-
 # 运行环境初始化脚本（首次运行，约5-10分钟）
 chmod +x setup_gpu_env.sh
 ./setup_gpu_env.sh
 
 # 重新登录以激活环境
 exit
-ssh root@YOUR_GPU_SERVER_IP
+ssh gpu_server
 ```
 
 ### 步骤3：启动训练
@@ -121,7 +116,7 @@ sudo shutdown -h now
 ### 方法1：SCP下载
 ```bash
 # 在本地Mac上执行
-scp -r root@YOUR_GPU_SERVER_IP:~/btc_quant/predict/models/tcn_* \
+scp -r gpu_server:~/btc_quant/predict/models/tcn_* \
   /Users/lemonshwang/project/btc_quant/predict/models/
 ```
 
@@ -172,27 +167,30 @@ docker-compose restart data-service
 ## 📝 完整工作流程
 
 ```bash
-# 1. 创建GPU实例（抢占式）
-# 2. 初始化环境（首次）
-./setup_gpu_env.sh
+# 1. 在CPU服务器上准备好训练数据
+ssh cpu_server
+cd /root/workspace/btcquant && ./prepare_training_data.sh
 
-# 3. 上传代码和数据缓存
-scp data_cache.pkl root@SERVER:~/btc_quant/predict/
+# 2. 从CPU服务器传输数据到GPU服务器
+scp training_data_cache.pkl gpu_server:~/btc_quant/predict/data_cache.pkl
+
+# 3. 登录GPU服务器，初始化环境（首次）
+ssh gpu_server
+cd ~/btc_quant && ./setup_gpu_env.sh
 
 # 4. 启动训练
 ./deploy_gpu_training.sh
 
 # 5. 监控训练（20-60分钟）
-tail -f training_gpu.log
+tail -f predict/training_gpu.log
 
-# 6. 下载模型
-scp -r root@SERVER:~/btc_quant/predict/models/tcn_* ./models/
+# 6. 下载模型到本地
+# 在本地执行：
+scp -r gpu_server:~/btc_quant/predict/models/tcn_* ./predict/models/
 
-# 7. 释放GPU实例
-# 在阿里云控制台释放实例
-
-# 8. 部署到CPU推理服务
-docker-compose restart predict-service
+# 7. 部署到CPU推理服务
+ssh cpu_server
+cd /root/workspace/btcquant && docker-compose restart predict-service
 ```
 
 ## ✅ 验证清单

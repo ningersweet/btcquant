@@ -3,15 +3,14 @@
 
 set -e
 
-SERVER_IP="47.236.94.252"
-SERVER_USER="root"
+SERVER="cpu_server"
 PROJECT_DIR="/root/workspace/btcquant"
 
 echo "=========================================="
 echo "修复数据服务容器并部署到服务器"
 echo "=========================================="
 echo ""
-echo "服务器: $SERVER_USER@$SERVER_IP"
+echo "服务器: $SERVER"
 echo "项目目录: $PROJECT_DIR"
 echo ""
 
@@ -25,7 +24,7 @@ echo ""
 
 # 2. 连接服务器并更新代码
 echo "[2/5] 连接服务器并更新代码..."
-ssh $SERVER_USER@$SERVER_IP << 'ENDSSH'
+ssh $SERVER << 'ENDSSH'
 cd /root/workspace/btcquant
 echo "当前目录: $(pwd)"
 echo "拉取最新代码..."

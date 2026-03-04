@@ -60,14 +60,14 @@ max_time_range = max_batch_size * interval_ms
 ## 部署步骤
 
 ### 服务器信息
-- **IP地址：** 47.236.94.252
+- **SSH 登录：** `ssh cpu_server`
 - **项目目录：** /root/workspace/btcquant
 - **配置：** 2核4G，100GB磁盘
 
 ### 1. 在服务器上更新代码
 ```bash
-# SSH登录服务器
-ssh root@47.236.94.252
+# SSH登录CPU服务器
+ssh cpu_server
 
 # 进入项目目录
 cd /root/workspace/btcquant

@@ -1,11 +1,14 @@
-# 🚀 快速部署指南（你的服务器）
+# 🚀 快速部署指南
 
 ## 服务器信息
 
-- **IP地址：** 47.236.94.252
-- **项目目录：** /root/workspace/btcquant
-- **配置：** 2核4G，100GB磁盘
-- **已安装：** Docker, Git
+| 服务器 | SSH 登录 | 项目目录 | 用途 |
+|--------|---------|---------|------|
+| CPU 服务器 | `ssh cpu_server` | /root/workspace/btcquant | 数据服务、数据准备 |
+| GPU 服务器 | `ssh gpu_server` | ~/btc_quant | 模型训练 |
+
+- **CPU 服务器配置：** 2核4G，100GB磁盘，已安装 Docker, Git
+- **CPU 服务器可直接访问 GPU 服务器：** 在 cpu_server 上执行 `ssh gpu_server` 即可
 
 ## 📋 快速开始（3步）
 
@@ -83,11 +86,14 @@ git push
 ### SSH登录
 
 ```bash
-# 直接登录服务器
-./deploy.sh shell
+# 登录CPU服务器
+ssh cpu_server
 
-# 或者
-ssh root@47.236.94.252
+# 登录GPU服务器
+ssh gpu_server
+
+# 或通过deploy.sh
+./deploy.sh shell
 ```
 
 ## 📊 命令速查表
@@ -168,20 +174,19 @@ docker-compose restart
 
 ### GPU训练方案
 
-由于你的服务器没有GPU，建议：
+CPU 服务器没有 GPU，训练需使用 GPU 服务器：
 
 ```bash
-# 1. 在你的服务器准备数据
-./deploy.sh prepare
+# 1. 在CPU服务器准备数据
+ssh cpu_server
+cd /root/workspace/btcquant
+./prepare_training_data.sh
 
-# 2. 下载数据到本地
-scp root@47.236.94.252:/root/workspace/btcquant/training_data_cache.pkl ./
+# 2. 从CPU服务器直接传输数据到GPU服务器
+scp training_data_cache.pkl gpu_server:~/btc_quant/predict/data_cache.pkl
 
-# 3. 上传到GPU服务器
-scp training_data_cache.pkl root@GPU_SERVER:~/btc_quant/predict/data_cache.pkl
-
-# 4. 在GPU服务器训练
-ssh root@GPU_SERVER
+# 3. 登录GPU服务器启动训练
+ssh gpu_server
 cd ~/btc_quant
 ./deploy_gpu_training.sh
 ```
@@ -203,7 +208,7 @@ cd ~/btc_quant
 ### 检查数据服务
 
 ```bash
-./deploy.sh shell
+ssh cpu_server
 cd /root/workspace/btcquant
 
 # 检查服务
@@ -217,7 +222,7 @@ curl http://localhost:8001/api/v1/status?symbol=BTCUSDT&interval=5m
 ### 清理磁盘空间
 
 ```bash
-./deploy.sh shell
+ssh cpu_server
 
 # 清理Docker
 docker system prune -a
@@ -231,7 +236,7 @@ rm -f *.log
 
 ```bash
 # 下载训练数据缓存到本地
-scp root@47.236.94.252:/root/workspace/btcquant/training_data_cache.pkl \
+scp cpu_server:/root/workspace/btcquant/training_data_cache.pkl \
     ~/backup/training_data_cache_$(date +%Y%m%d).pkl
 ```
 
