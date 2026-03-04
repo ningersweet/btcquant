@@ -1,31 +1,39 @@
-# BTC Quant - 预测服务
+# 预测服务 (Predict Service)
 
-基于TCN（时间卷积网络）的比特币合约量化交易预测服务。
-
-## 功能特性
-
-- **TCN模型架构**：8层残差空洞卷积，感受野覆盖24小时
-- **智能标签生成**：基于极值时序的双向缓冲机制
-- **完整训练流程**：数据获取、标签生成、模型训练、回测评估
-- **ONNX加速推理**：比PyTorch原生CPU推理快3-5倍
-- **回测评估系统**：收益率、最大回撤、夏普比率等指标
+基于TCN（时间卷积网络）的比特币价格预测服务。
 
 ## 目录结构
 
 ```
 predict/
-├── src/
-│   ├── label_generator.py    # 标签生成器
-│   ├── tcn_model.py          # TCN模型架构
-│   ├── data_loader.py        # 数据加载器
-│   ├── model_trainer.py      # 模型训练器
-│   ├── backtest.py           # 回测引擎
-│   └── inference.py          # 推理服务
-├── models/                   # 模型保存目录
-├── config.py                 # 配置管理
-├── train.py                  # 训练脚本
-├── .env.example              # 环境变量示例
-└── requirements.txt          # 依赖包
+├── src/                    # 核心代码库
+│   ├── label_generator.py  # 标签生成器（多核并行）
+│   ├── tcn_model.py        # TCN模型架构
+│   ├── model_trainer.py    # 模型训练器
+│   ├── data_loader.py      # 数据加载器
+│   ├── backtest.py         # 回测引擎
+│   ├── inference.py        # 推理引擎
+│   └── hyperparameter_tuner.py  # 超参数优化
+├── training/               # 训练脚本
+│   ├── train.py           # 主训练脚本
+│   ├── train_with_notification.py  # 带通知的训练
+│   └── post_training.py   # 训练后处理
+├── api/                    # API服务
+│   └── api.py             # FastAPI接口
+├── scripts/                # 工具脚本
+│   ├── sync_data.py       # 数据同步
+│   └── check_model.py     # 模型检查
+├── docs/                   # 文档
+│   ├── README.md          # 服务文档
+│   ├── QUICKSTART.md      # 快速开始
+│   ├── 模型设计.md         # 模型设计文档
+│   ├── 特征工程.md         # 特征工程文档
+│   └── TRAINING_AUTOMATION.md  # 训练自动化文档
+├── models/                 # 本地模型（已废弃，使用storage/models/）
+├── logs/                   # 本地日志（已废弃，使用storage/logs/）
+├── config.py              # 配置管理
+├── requirements.txt       # Python依赖
+└── Dockerfile            # Docker镜像
 ```
 
 ## 快速开始
@@ -33,158 +41,227 @@ predict/
 ### 1. 安装依赖
 
 ```bash
-cd predict
 pip install -r requirements.txt
 ```
 
-### 2. 配置环境变量
+### 2. 配置
+
+配置文件位于项目根目录：`../config.yaml`
 
 ```bash
-cp .env.example .env
-# 编辑 .env 文件，配置超参数
+# 从根目录
+cp config.yaml.example config.yaml
+vim config.yaml
 ```
 
-### 3. 启动数据服务
+### 3. 训练模型
 
 ```bash
-cd ..
-docker-compose up -d data-service
+# 使用btcquant命令（推荐）
+btcquant train start --gpu
+
+# 或本地训练
+cd training
+python train.py --mode cache
 ```
 
-### 4. 训练模型
+### 4. 启动API服务
 
 ```bash
-python train.py
+# 使用Docker
+docker-compose up -d predict-service
+
+# 或直接运行
+cd api
+uvicorn api:app --host 0.0.0.0 --port 8000
 ```
 
-训练完成后，模型会保存在 `models/tcn_YYYYMMDD_HHMMSS/` 目录下。
+## 核心功能
+
+### 标签生成（多核并行）
+
+```python
+from src.label_generator import LabelGenerator
+
+generator = LabelGenerator(n_jobs=-1)  # 使用所有CPU核心
+df_with_labels = generator.generate_labels(df)
+```
+
+### 模型训练
+
+```python
+from src.model_trainer import ModelTrainer
+from src.tcn_model import TCNModel
+
+model = TCNModel(...)
+trainer = ModelTrainer(model, ...)
+history = trainer.train(train_df, val_df, epochs=100)
+```
+
+### 模型推理
+
+```python
+from src.inference import load_inference_model
+
+inference = load_inference_model(model_dir, use_onnx=True)
+prediction = inference.predict(klines)
+```
+
+### 回测
+
+```python
+from src.backtest import Backtester
+
+backtester = Backtester(model, ...)
+metrics = backtester.backtest(test_df)
+```
 
 ## 配置说明
 
-所有超参数都在 `.env` 文件中配置，主要参数包括：
+所有配置在根目录的 `config.yaml` 中：
 
-### 标签生成参数
-
-- `LABEL_ALPHA`: 入场缓冲系数（默认0.0015，即0.15%）
-- `LABEL_GAMMA`: 止盈缓冲系数（默认0.0040，即0.40%）
-- `LABEL_BETA`: 止损缓冲系数（默认0.0025，即0.25%）
-- `LABEL_THETA_MIN`: 最小净利阈值（默认0.0100，即1.00%）
-- `LABEL_K`: 预测窗口长度（默认12根K线，即1小时）
-
-### 模型架构参数
-
-- `MODEL_INPUT_DIM`: 输入特征维度（5维OHLCV）
-- `MODEL_CHANNELS`: TCN通道数（默认64）
-- `MODEL_NUM_LAYERS`: TCN层数（默认8）
-- `MODEL_KERNEL_SIZE`: 卷积核大小（默认3）
-- `MODEL_DROPOUT`: Dropout率（默认0.2）
-
-### 训练参数
-
-- `TRAIN_BATCH_SIZE`: 批次大小（默认128）
-- `TRAIN_LEARNING_RATE`: 学习率（默认0.001）
-- `TRAIN_EPOCHS`: 训练轮数（默认100）
-- `TRAIN_EARLY_STOPPING_PATIENCE`: 早停耐心值（默认15）
-- `TRAIN_LAMBDA_CLS`: 分类损失权重（默认1.0）
-- `TRAIN_LAMBDA_REG`: 回归损失权重（默认0.5）
-
-## 模型输出
-
-### 分类输出
-- 3个类别：Hold（持有）、Long（做多）、Short（做空）
-- 输出概率分布
-
-### 回归输出
-- `offset`: 入场偏移率（相对于当前价格）
-- `tp_dist`: 止盈距离率（相对于入场价）
-- `sl_dist`: 止损距离率（相对于入场价）
-
-## 回测指标
-
-训练完成后会自动在测试集上运行回测，输出以下指标：
-
-- **总交易次数**：回测期间的交易数量
-- **胜率**：盈利交易占比
-- **总收益率**：资金增长百分比
-- **最大回撤**：资金曲线最大下跌幅度
-- **夏普比率**：风险调整后收益
-- **盈利因子**：总盈利/总亏损
-- **时间止损率**：因时间到期而平仓的比例
-
-## 推理使用
-
-```python
-from pathlib import Path
-from src.inference import load_inference_model
-import pandas as pd
-
-# 加载模型
-model_dir = Path('models/tcn_20240101_120000')
-inference = load_inference_model(model_dir, use_onnx=True)
-
-# 准备数据（最近288根5分钟K线）
-klines = pd.DataFrame({
-    'open': [...],
-    'high': [...],
-    'low': [...],
-    'close': [...],
-    'volume': [...]
-})
-
-# 预测
-prediction = inference.predict(klines)
-print(prediction)
-
-# 计算订单价格
-current_price = klines.iloc[-1]['close']
-order = inference.calculate_order_prices(prediction, current_price)
-if order:
-    print(f"开仓方向: {order['side']}")
-    print(f"入场价: {order['entry_price']}")
-    print(f"止盈价: {order['tp_price']}")
-    print(f"止损价: {order['sl_price']}")
-    print(f"盈亏比: {order['rr_ratio']:.2f}")
+```yaml
+predict:
+  # 标签生成
+  label:
+    alpha: 0.0015
+    gamma: 0.0040
+    beta: 0.0025
+    theta_min: 0.0100
+    K: 12
+  
+  # 模型架构
+  model:
+    channels: 64
+    num_layers: 8
+    dropout: 0.2
+  
+  # 训练参数
+  training:
+    batch_size: 128
+    learning_rate: 0.001
+    epochs: 100
+    device: "cuda"
 ```
 
-## 注意事项
+## 训练模式
 
-1. **数据要求**：训练需要从2019年至今的完整5分钟K线数据
-2. **计算资源**：TCN模型在CPU上训练较慢，建议使用GPU加速
-3. **避免过拟合**：严格使用时间序列划分，不要在测试集上调参
-4. **未来数据泄露**：标签生成严格避免使用未来数据
-5. **配置安全**：`.env` 文件包含敏感参数，不要提交到git
+### 1. Cache模式（推荐）
+使用预先准备的数据缓存，速度最快：
+```bash
+python training/train.py --mode cache
+```
+
+### 2. Full模式
+从数据服务加载完整数据：
+```bash
+python training/train.py --mode full
+```
+
+### 3. Incremental模式
+在已有模型基础上继续训练：
+```bash
+python training/train.py --mode incremental --base-model ../storage/models/tcn_xxx/best_model.pt
+```
+
+## 日志和存储
+
+### 日志位置
+所有日志统一存放在：`../storage/logs/`
+
+```bash
+# 查看训练日志
+tail -f ../storage/logs/training.log
+```
+
+### 数据缓存
+数据缓存统一存放在：`../storage/cache/`
+
+### 模型存储
+训练好的模型存放在：`../storage/models/`
+
+## API接口
+
+### 健康检查
+```bash
+curl http://localhost:8000/health
+```
+
+### 预测
+```bash
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "symbol": "BTCUSDT",
+    "klines": [...]
+  }'
+```
 
 ## 性能优化
 
-- 使用ONNX Runtime进行推理，速度提升3-5倍
-- 批量推理时增大batch_size
-- 生产环境建议使用量化模型（INT8）
+### 标签生成
+- 使用多核并行处理（5-8倍提速）
+- 自动检测CPU核心数
+
+### 模型训练
+- 支持GPU加速
+- 批量训练优化
+- 早停机制
+
+### 模型推理
+- ONNX Runtime加速（3-5倍提速）
+- 批量推理支持
+
+## 开发指南
+
+### 添加新特征
+1. 在 `src/` 中添加特征提取代码
+2. 更新 `data_loader.py`
+3. 更新模型输入维度
+
+### 修改模型架构
+1. 编辑 `src/tcn_model.py`
+2. 更新 `config.yaml` 中的模型参数
+3. 重新训练模型
+
+### 自定义训练流程
+1. 参考 `training/train.py`
+2. 使用 `ModelTrainer` 类
+3. 自定义损失函数和优化器
 
 ## 故障排查
 
-### 数据服务连接失败
+### 训练失败
 ```bash
-# 检查数据服务是否运行
+# 查看日志
+tail -100 ../storage/logs/training.log
+
+# 检查配置
+cat ../config.yaml
+
+# 检查GPU
+nvidia-smi
+```
+
+### API无响应
+```bash
+# 检查服务状态
 docker-compose ps
 
 # 查看日志
-docker-compose logs data-service
+docker-compose logs predict-service
 ```
 
-### 内存不足
-- 减小 `TRAIN_BATCH_SIZE`
-- 减小 `DATA_WINDOW_SIZE`
-- 使用梯度累积
+## 更多文档
 
-### 训练不收敛
-- 调整学习率 `TRAIN_LEARNING_RATE`
-- 检查标签分布是否平衡
-- 增加训练数据量
+- [快速开始](docs/QUICKSTART.md)
+- [模型设计](docs/模型设计.md)
+- [特征工程](docs/特征工程.md)
+- [训练自动化](docs/TRAINING_AUTOMATION.md)
+- [训练报告](docs/TRAINING_REPORT.md)
 
-## 更新日志
+## 相关链接
 
-### v1.0.0 (2024-01-01)
-- 初始版本
-- 实现TCN模型架构
-- 完整的训练和回测流程
-- ONNX导出支持
+- [项目主页](../README.md)
+- [项目规范](../PROJECT_STANDARDS.md)
+- [项目规则](../PROJECT_RULES.md)

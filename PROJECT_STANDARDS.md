@@ -8,18 +8,32 @@ btc_quant/
 ├── storage/                    # 统一存储目录（运行时数据）
 │   ├── logs/                  # 所有日志文件
 │   ├── cache/                 # 数据缓存文件
-│   └── models/                # 训练好的模型（可选）
+│   └── models/                # 训练好的模型
 ├── common/                     # 公共模块
 ├── data/                       # 数据服务
 ├── predict/                    # 预测服务
-│   ├── src/                   # 核心代码
-│   ├── train.py               # 统一训练脚本
-│   ├── train_with_notification.py  # 带通知的训练脚本
-│   ├── post_training.py       # 训练后处理脚本
-│   ├── start_training.sh      # GPU训练启动脚本
+│   ├── src/                   # 核心代码库
+│   │   ├── label_generator.py # 标签生成器
+│   │   ├── tcn_model.py       # TCN模型
+│   │   ├── model_trainer.py   # 训练器
+│   │   ├── data_loader.py     # 数据加载
+│   │   ├── backtest.py        # 回测引擎
+│   │   └── inference.py       # 推理引擎
+│   ├── training/              # 训练脚本
+│   │   ├── train.py          # 主训练脚本
+│   │   ├── train_with_notification.py  # 带通知训练
+│   │   └── post_training.py  # 训练后处理
+│   ├── api/                   # API服务
+│   │   └── api.py            # FastAPI接口
+│   ├── scripts/               # 工具脚本
+│   │   ├── sync_data.py      # 数据同步
+│   │   └── check_model.py    # 模型检查
+│   ├── docs/                  # 文档
 │   └── config.py              # 配置管理
 ├── strategy/                   # 策略服务
-└── docs/                      # 文档目录
+├── docs/                      # 项目文档
+├── config.yaml                # 统一配置文件
+└── PROJECT_STANDARDS.md       # 项目规范
 ```
 
 ## 代码规范

@@ -172,19 +172,26 @@ btc_quant/
 │   ├── src/                   # 数据服务源码
 │   └── Dockerfile             # 数据服务镜像
 ├── predict/                    # 预测服务
-│   ├── src/                   # 核心代码
+│   ├── src/                   # 核心代码库
 │   │   ├── label_generator.py # 标签生成器（多核并行）
 │   │   ├── tcn_model.py       # TCN模型
 │   │   ├── model_trainer.py   # 模型训练器
 │   │   └── backtest.py        # 回测引擎
-│   ├── train.py               # 统一训练脚本
-│   ├── train_with_notification.py  # 带通知的训练
-│   ├── post_training.py       # 训练后处理
+│   ├── training/              # 训练脚本
+│   │   ├── train.py          # 主训练脚本
+│   │   ├── train_with_notification.py  # 带通知训练
+│   │   └── post_training.py  # 训练后处理
+│   ├── api/                   # API服务
+│   │   └── api.py            # FastAPI接口
+│   ├── scripts/               # 工具脚本
+│   ├── docs/                  # 文档
 │   └── config.py              # 配置管理
 ├── strategy/                   # 策略服务
-├── docs/                      # 文档目录
+├── docs/                      # 项目文档
+├── config.yaml                # 统一配置文件
 ├── docker-compose.yml         # Docker编排
 ├── PROJECT_STANDARDS.md       # 项目规范
+├── PROJECT_RULES.md           # 项目规则
 └── README.md                  # 本文件
 ```
 

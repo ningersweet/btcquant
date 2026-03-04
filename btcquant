@@ -605,8 +605,8 @@ fi
 mkdir -p storage/logs storage/cache storage/models
 
 # 启动后台训练
-cd predict
-nohup python train_with_notification.py --mode cache > ../storage/logs/training.log 2>&1 &
+cd predict/training
+nohup python train_with_notification.py --mode cache > ../../storage/logs/training.log 2>&1 &
 PID=$!
 echo $PID > ~/training.pid
 
@@ -625,7 +625,7 @@ EOF
         print_info "使用 'btcquant train status' 查看状态"
     else
         print_header "启动本地训练"
-        cd "$SCRIPT_DIR/predict"
+        cd "$SCRIPT_DIR/predict/training"
         python train.py
     fi
 }
