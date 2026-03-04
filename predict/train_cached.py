@@ -140,6 +140,16 @@ def main():
     logger.info("BTC Quant - TCN Model Training (Cached)")
     logger.info("="*60)
     
+    # 打印设备信息
+    logger.info(f"\n[Device Info]")
+    logger.info(f"PyTorch version: {torch.__version__}")
+    logger.info(f"CUDA available: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        logger.info(f"CUDA version: {torch.version.cuda}")
+        logger.info(f"GPU count: {torch.cuda.device_count()}")
+        logger.info(f"GPU name: {torch.cuda.get_device_name(0)}")
+    logger.info(f"Training device: {train_config.DEVICE}")
+    
     # 1. 获取历史数据（使用缓存）
     logger.info("\n[Step 1/6] Loading historical data...")
     try:
