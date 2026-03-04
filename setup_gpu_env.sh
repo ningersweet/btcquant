@@ -1,6 +1,6 @@
 #!/bin/bash
 # GPU服务器环境初始化脚本
-# 安装Miniconda和PyTorch GPU环境
+# 使用Python venv代替conda
 
 set -e
 
@@ -19,54 +19,36 @@ echo "GPU信息:"
 nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
 echo ""
 
-# 安装Miniconda
-if ! command -v conda &> /dev/null; then
-    echo "[1/4] 安装Miniconda..."
-    cd /tmp
-    wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-    bash Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda3
-    rm Miniconda3-latest-Linux-x86_64.sh
-    
-    # 初始化conda
-    eval "$($HOME/miniconda3/bin/conda shell.bash hook)"
-    conda init bash
-    
-    echo "✓ Miniconda已安装"
-    echo ""
-    echo "⚠️  请重新登录以激活conda环境，然后继续执行："
-    echo "   ssh gpu_server"
-    echo "   cd /root/workspace/btcquant"
-    echo "   ./setup_gpu_env.sh"
-    exit 0
-else
-    echo "[1/4] Conda已安装"
-    eval "$(conda shell.bash hook)"
+# 检查Python 3.11
+echo "[1/4] 检查Python环境..."
+if ! command -v python3.11 &> /dev/null; then
+    echo "安装Python 3.11..."
+    sudo yum install -y python3.11 python3.11-pip python3.11-devel
 fi
 
-# 创建conda环境
+python3.11 --version
+echo "✓ Python已准备"
+
+# 创建虚拟环境
 echo ""
-echo "[2/4] 创建Python环境..."
+echo "[2/4] 创建虚拟环境..."
+cd /root/workspace/btcquant
 
-# 配置conda使用conda-forge，避免服务条款问题
-conda config --set channel_priority flexible
-conda config --remove channels defaults 2>/dev/null || true
-conda config --add channels conda-forge
-
-if conda env list | grep -q "btc_quant"; then
-    echo "环境已存在，更新..."
-    conda activate btc_quant
+if [ -d "venv" ]; then
+    echo "虚拟环境已存在"
 else
-    echo "创建新环境..."
-    conda create -n btc_quant python=3.11 -y
-    conda activate btc_quant
+    echo "创建新虚拟环境..."
+    python3.11 -m venv venv
 fi
 
-echo "✓ Python环境已准备"
+source venv/bin/activate
+echo "✓ 虚拟环境已激活"
 python --version
 
 # 安装PyTorch GPU版本
 echo ""
 echo "[3/4] 安装PyTorch GPU..."
+pip install --upgrade pip
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
 # 验证GPU
@@ -91,7 +73,10 @@ echo "  PyTorch: $(python -c 'import torch; print(torch.__version__)')"
 echo "  CUDA: $(python -c 'import torch; print(torch.version.cuda)')"
 echo "  GPU: $(python -c 'import torch; print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"N/A\")')"
 echo ""
+echo "激活环境:"
+echo "  source /root/workspace/btcquant/venv/bin/activate"
+echo ""
 echo "下一步:"
-echo "  1. 同步训练数据: ./btcquant gpu sync-data"
-echo "  2. 启动训练: ./btcquant gpu train"
+echo "  1. 同步训练数据: ssh cpu_server 'cat /root/workspace/btcquant/training_data_cache.pkl' > predict/data_cache.pkl"
+echo "  2. 启动训练: cd predict && python train_cached.py"
 echo ""
