@@ -46,12 +46,17 @@ fi
 # 创建conda环境
 echo ""
 echo "[2/4] 创建Python环境..."
+
+# 接受Conda服务条款
+conda config --set channel_priority flexible
+conda config --add channels conda-forge
+
 if conda env list | grep -q "btc_quant"; then
     echo "环境已存在，更新..."
     conda activate btc_quant
 else
     echo "创建新环境..."
-    conda create -n btc_quant python=3.11 -y
+    conda create -n btc_quant python=3.11 -y -c conda-forge
     conda activate btc_quant
 fi
 
