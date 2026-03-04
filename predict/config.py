@@ -270,30 +270,74 @@ class Config:
     def symbol(self) -> str:
         return self._config['data']['symbol']
     
-    # 邮件配置（从环境变量读取）
+    # 邮件配置（优先环境变量，然后配置文件）
+    @property
+    def notification_enabled(self) -> bool:
+        return self.get('notification.email.enabled', False)
+    
     @property
     def smtp_server(self) -> str:
-        return os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+        return os.getenv('SMTP_SERVER', self.get('notification.email.smtp_server', 'smtp.gmail.com'))
     
     @property
     def smtp_port(self) -> int:
-        return int(os.getenv('SMTP_PORT', '587'))
+        port = os.getenv('SMTP_PORT', self.get('notification.email.smtp_port', 587))
+        return int(port)
+    
+    @property
+    def smtp_use_tls(self) -> bool:
+        use_tls = os.getenv('SMTP_USE_TLS', self.get('notification.email.smtp_use_tls', True))
+        return str(use_tls).lower() in ('true', '1', 'yes')
     
     @property
     def smtp_user(self) -> str:
-        return os.getenv('SMTP_USER', '')
+        return os.getenv('SMTP_USER', self.get('notification.email.smtp_user', ''))
     
     @property
     def smtp_password(self) -> str:
-        return os.getenv('SMTP_PASSWORD', '')
+        return os.getenv('SMTP_PASSWORD', self.get('notification.email.smtp_password', ''))
     
     @property
     def from_email(self) -> str:
-        return os.getenv('FROM_EMAIL', self.smtp_user)
+        return os.getenv('FROM_EMAIL', self.get('notification.email.from_email', self.smtp_user))
     
     @property
     def to_email(self) -> str:
-        return os.getenv('TO_EMAIL', self.smtp_user)
+        return os.getenv('TO_EMAIL', self.get('notification.email.to_email', self.smtp_user))
+    
+    # 交易配置
+    @property
+    def trading_mode(self) -> str:
+        return os.getenv('MODE', self.get('trading.mode', 'backtest'))
+    
+    @property
+    def binance_api_key(self) -> str:
+        return os.getenv('BINANCE_API_KEY', self.get('trading.binance.api_key', ''))
+    
+    @property
+    def binance_api_secret(self) -> str:
+        return os.getenv('BINANCE_API_SECRET', self.get('trading.binance.api_secret', ''))
+    
+    @property
+    def use_testnet(self) -> bool:
+        use_testnet = os.getenv('USE_TESTNET', self.get('trading.binance.use_testnet', False))
+        return str(use_testnet).lower() in ('true', '1', 'yes')
+    
+    @property
+    def risk_amount(self) -> float:
+        return float(os.getenv('RISK_AMOUNT', self.get('trading.risk.risk_amount', 100)))
+    
+    @property
+    def min_rr_threshold(self) -> float:
+        return float(os.getenv('MIN_RR_THRESHOLD', self.get('trading.risk.min_rr_threshold', 1.5)))
+    
+    @property
+    def leverage(self) -> int:
+        return int(os.getenv('LEVERAGE', self.get('trading.risk.leverage', 20)))
+    
+    @property
+    def log_level(self) -> str:
+        return os.getenv('LOG_LEVEL', self.get('trading.log_level', 'INFO'))
     
     # 路径配置
     @property

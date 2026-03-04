@@ -105,3 +105,39 @@ evaluation:
   risk_free_rate: 0.02
   trading_days_per_year: 365
   hours_per_day: 24
+
+# 邮件通知配置（训练完成通知）
+notification:
+  email:
+    enabled: false  # 是否启用邮件通知
+    smtp_server: "smtp.gmail.com"
+    smtp_port: 587
+    smtp_use_tls: true
+    smtp_user: "your_email@gmail.com"
+    smtp_password: "your_app_password"  # Gmail需要使用应用专用密码
+    from_email: "your_email@gmail.com"
+    to_email: "your_email@gmail.com"
+    # 常见邮箱配置参考：
+    # Gmail: smtp.gmail.com:587 (需要开启应用专用密码)
+    # QQ: smtp.qq.com:587 (需要开启SMTP并获取授权码)
+    # 163: smtp.163.com:465, smtp_use_tls=false (需要授权码)
+    # Outlook: smtp-mail.outlook.com:587
+
+# 交易配置（策略执行）
+trading:
+  mode: "backtest"  # backtest / paper / live
+  
+  # Binance API配置（实盘/模拟盘需要）
+  binance:
+    api_key: "your_api_key_here"
+    api_secret: "your_api_secret_here"
+    use_testnet: false
+  
+  # 风险管理
+  risk:
+    risk_amount: 100  # 每次交易风险金额
+    min_rr_threshold: 1.5  # 最小风险回报比
+    leverage: 20  # 杠杆倍数
+  
+  # 日志配置
+  log_level: "INFO"  # DEBUG / INFO / WARNING / ERROR
