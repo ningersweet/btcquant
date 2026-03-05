@@ -67,7 +67,7 @@ def load_data_from_cache(cache_file: Path):
     return df, train_df, val_df, test_df
 
 
-def split_data(df, train_ratio=0.7, val_ratio=0.15):
+def split_data(df, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15):
     """划分训练集、验证集和测试集"""
     n = len(df)
     train_size = int(n * train_ratio)
