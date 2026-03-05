@@ -48,23 +48,10 @@ def load_data_from_cache(cache_file: Path):
     
     logger.info(f"从缓存加载数据: {cache_file}")
     with open(cache_file, 'rb') as f:
-        data = pickle.load(f)
-    
-    # 兼容两种格式：直接DataFrame或字典
-    if isinstance(data, dict):
-        df = data.get('df')
-        train_df = data.get('train_df')
-        val_df = data.get('val_df')
-        test_df = data.get('test_df')
-    else:
-        # 直接是DataFrame
-        df = data
-        train_df = None
-        val_df = None
-        test_df = None
+        df = pickle.load(f)
     
     logger.info(f"数据加载完成: {len(df)} 条记录")
-    return df, train_df, val_df, test_df
+    return df, None, None, None
 
 
 def split_data(df, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15):
