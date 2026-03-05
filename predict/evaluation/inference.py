@@ -10,6 +10,11 @@ import pandas as pd
 from pathlib import Path
 from typing import Dict, Tuple, Optional
 import logging
+import sys
+
+# 添加predict目录到路径
+predict_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(predict_dir))
 
 try:
     import onnxruntime as ort
@@ -18,8 +23,7 @@ except ImportError:
     ONNX_AVAILABLE = False
     ort = None
 
-from .tcn_model import TCNModel
-from .data_loader import normalize_inference_data
+from models.tcn_model import TCNModel
 
 logger = logging.getLogger(__name__)
 
