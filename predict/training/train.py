@@ -23,7 +23,7 @@ sys.path.insert(0, str(predict_dir))
 from data.label_generator import LabelGenerator
 from models.model_trainer import ModelTrainer
 from models.tcn_model import TCNModel
-from evaluation.backtest import Backtester
+from evaluation.backtest import BacktestEngine
 from config import Config
 
 # 配置日志
@@ -135,7 +135,7 @@ def train_model(train_df, val_df, test_df, config: Config, model_dir: Path, base
     # 回测
     if test_df is not None and len(test_df) > 0:
         logger.info("开始回测...")
-        backtester = Backtester(
+        backtester = BacktestEngine(
             model=model,
             window_size=config.data_window_size,
             device=config.train_device,

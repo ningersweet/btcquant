@@ -4,7 +4,7 @@
 包含回测和推理功能
 """
 
-from .backtest import Backtester
+from .backtest import BacktestEngine
 from .inference import (
     InferenceEngine,
     load_inference_model,
@@ -12,7 +12,7 @@ from .inference import (
 )
 
 __all__ = [
-    'Backtester',
+    'BacktestEngine',
     'InferenceEngine',
     'load_inference_model',
     'ONNXInferenceEngine'
