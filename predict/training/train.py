@@ -12,6 +12,7 @@ import os
 import sys
 import argparse
 import logging
+import pickle
 from pathlib import Path
 from datetime import datetime
 
@@ -19,7 +20,6 @@ from datetime import datetime
 predict_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(predict_dir))
 
-from data.data_loader import load_klines_from_service, split_data
 from data.label_generator import LabelGenerator
 from models.model_trainer import ModelTrainer
 from models.tcn_model import TCNModel
