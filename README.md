@@ -111,12 +111,25 @@ tail -f logs/training.log
 
 ## 📖 文档
 
-- [快速开始](QUICKSTART.md) - 详细的快速开始指南
-- [项目规范](PROJECT_STANDARDS.md) - 代码规范和工作流程
-- [训练自动化](predict/TRAINING_AUTOMATION.md) - 训练自动化文档
-- [模型设计](predict/模型设计.md) - TCN模型设计文档
-- [特征工程](predict/特征工程.md) - 特征工程文档
-- [部署指南](docs/部署指南.md) - 详细部署指南
+### 快速入门
+- [命令使用指南](COMMANDS.md) - 所有btcquant命令详解 ⭐
+- [项目规范](PROJECT.md) - 开发规范和工作流程
+- [贡献指南](CONTRIBUTING.md) - 如何贡献代码
+
+### 详细文档
+- [文档导航](docs/INDEX.md) - 完整文档索引
+- [系统设计](docs/系统设计.md) - 系统架构设计
+- [部署指南](docs/部署指南.md) - 生产环境部署
+- [特征工程](docs/特征工程详细文档.md) - 特征设计详解
+- [模型训练](docs/模型训练与评估详细文档.md) - 训练流程详解
+- [超参数优化](docs/超参数优化指南.md) - 调优方法
+
+### 模块文档
+- [预测服务](predict/README.md) - TCN模型和训练
+- [数据服务](data/README.md) - 数据获取和存储
+- [策略服务](strategy/README.md) - 交易策略
+- [特征工程](features/README.md) - 特征计算
+- [评估模块](evaluation/README.md) - 回测评估
 
 ## 🛠️ 常用命令
 

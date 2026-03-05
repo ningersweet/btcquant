@@ -30,7 +30,6 @@ predict/
 ├── scripts/                # 工具脚本
 │   ├── sync_data.py       # 数据同步
 │   └── check_model.py     # 模型检查
-├── docs/                   # 文档
 ├── config.py              # 配置管理
 ├── requirements.txt       # Python依赖
 └── Dockerfile            # Docker镜像
@@ -38,23 +37,15 @@ predict/
 
 ## 快速开始
 
-### 1. 安装依赖
+详细的快速开始指南请查看：[项目README](../README.md)
+
+### 安装依赖
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. 配置
-
-配置文件位于项目根目录：`../config.yaml`
-
-```bash
-# 从根目录
-cp config.yaml.example config.yaml
-vim config.yaml
-```
-
-### 3. 训练模型
+### 训练模型
 
 ```bash
 # 使用btcquant命令（推荐）
@@ -65,7 +56,7 @@ cd training
 python train.py --mode cache
 ```
 
-### 4. 启动API服务
+### 启动API服务
 
 ```bash
 # 使用Docker
@@ -109,49 +100,15 @@ prediction = inference.predict(klines)
 ### 回测
 
 ```python
-from evaluation import Backtester
+from evaluation import BacktestEngine
 
-backtester = Backtester(model, ...)
+backtester = BacktestEngine(model, ...)
 metrics = backtester.backtest(test_df)
 ```
 
 ## 配置说明
 
-所有配置在根目录的 `config.yaml` 中：
-
-```yaml
-predict:
-  # 标签生成
-  label:
-    alpha: 0.0015
-    gamma: 0.0040
-  
-  # 模型架构
-  model:
-    channels: 64
-    num_layers: 8
-  
-  # 训练参数
-  training:
-    batch_size: 128
-    epochs: 100
-    device: "cuda"
-
-# 邮件通知
-notification:
-  email:
-    enabled: true
-    smtp_server: "smtp.gmail.com"
-    smtp_user: "your_email@gmail.com"
-    smtp_password: "your_app_password"
-
-# 交易配置
-trading:
-  mode: "backtest"
-  binance:
-    api_key: "your_api_key"
-    api_secret: "your_api_secret"
-```
+所有配置在根目录的 `config.yaml` 中，详见：[项目规范](../PROJECT.md)
 
 ## 训练模式
 
@@ -203,15 +160,10 @@ curl -X POST http://localhost:8000/predict \
 - 模型训练：GPU加速
 - 模型推理：ONNX Runtime（3-5倍提速）
 
-## 更多文档
-
-- [快速开始](docs/QUICKSTART.md)
-- [模型设计](docs/模型设计.md)
-- [特征工程](docs/特征工程.md)
-- [训练自动化](docs/TRAINING_AUTOMATION.md)
-
-## 相关链接
+## 相关文档
 
 - [项目主页](../README.md)
-- [项目规范](../PROJECT_STANDARDS.md)
-- [项目规则](../PROJECT_RULES.md)
+- [命令使用](../COMMANDS.md)
+- [项目规范](../PROJECT.md)
+- [系统设计](../docs/系统设计.md)
+- [模型训练详解](../docs/模型训练与评估详细文档.md)
