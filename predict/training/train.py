@@ -50,8 +50,21 @@ def load_data_from_cache(cache_file: Path):
     with open(cache_file, 'rb') as f:
         data = pickle.load(f)
     
-    logger.info(f"数据加载完成: {len(data['df'])} 条记录")
-    return data['df'], data.get('train_df'), data.get('val_df'), data.get('test_df')
+    # 兼容两种格式：直接DataFrame或字典
+    if isinstance(data, dict):
+        df = data.get('df')
+        train_df = data.get('train_df')
+        val_df = data.get('val_df')
+        test_df = data.get('test_df')
+    else:
+        # 直接是DataFrame
+        df = data
+        train_df = None
+        val_df = None
+        test_df = None
+    
+    logger.info(f"数据加载完成: {len(df)} 条记录")
+    return df, train_df, val_df, test_df
 
 
 def load_data_from_service(config: Config):
