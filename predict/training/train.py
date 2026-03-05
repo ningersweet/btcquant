@@ -15,14 +15,15 @@ import logging
 from pathlib import Path
 from datetime import datetime
 
-# 添加src目录到路径
-sys.path.insert(0, str(Path(__file__).parent / 'src'))
+# 添加predict目录到路径
+predict_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(predict_dir))
 
-from src.data_loader import load_klines_from_service, split_data
-from src.label_generator import LabelGenerator
-from src.model_trainer import ModelTrainer
-from src.tcn_model import TCNModel
-from src.backtest import Backtester
+from data.data_loader import load_klines_from_service, split_data
+from data.label_generator import LabelGenerator
+from models.model_trainer import ModelTrainer
+from models.tcn_model import TCNModel
+from evaluation.backtest import Backtester
 from config import Config
 
 # 配置日志
