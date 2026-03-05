@@ -67,6 +67,20 @@ def load_data_from_cache(cache_file: Path):
     return df, train_df, val_df, test_df
 
 
+def split_data(df, train_ratio=0.7, val_ratio=0.15):
+    """划分训练集、验证集和测试集"""
+    n = len(df)
+    train_size = int(n * train_ratio)
+    val_size = int(n * val_ratio)
+    
+    train_df = df.iloc[:train_size]
+    val_df = df.iloc[train_size:train_size + val_size]
+    test_df = df.iloc[train_size + val_size:]
+    
+    logger.info(f"数据划分: 训练集={len(train_df)}, 验证集={len(val_df)}, 测试集={len(test_df)}")
+    return train_df, val_df, test_df
+
+
 def load_data_from_service(config: Config):
     """从数据服务加载数据"""
     logger.info("从数据服务加载K线数据...")
