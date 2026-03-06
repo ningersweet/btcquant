@@ -55,11 +55,15 @@ def get_training_summary(model_dir: Path) -> dict:
     if history_file.exists():
         with open(history_file, 'r') as f:
             history = json.load(f)
-            if history:
-                best_epoch = min(history, key=lambda x: x['val_loss'])
-                summary['best_epoch'] = best_epoch['epoch']
-                summary['val_loss'] = f"{best_epoch['val_loss']:.4f}"
-                summary['val_accuracy'] = f"{best_epoch['val_accuracy']:.2%}"
+            if history and 'val_loss' in history:
+                # history是字典，包含val_loss列表
+                val_losses = history['val_loss']
+                if val_losses:
+                    best_epoch_idx = val_losses.index(min(val_losses))
+                    summary['best_epoch'] = best_epoch_idx + 1
+                    summary['val_loss'] = f"{val_losses[best_epoch_idx]:.4f}"
+                    if 'val_accuracy' in history and history['val_accuracy']:
+                        summary['val_accuracy'] = f"{history['val_accuracy'][best_epoch_idx]:.2%}"
     
     return summary
 
