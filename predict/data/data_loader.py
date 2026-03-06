@@ -181,24 +181,24 @@ def create_dataloaders(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=num_workers,
-        pin_memory=False
+        num_workers=4,  # 使用4个工作进程
+        pin_memory=True  # 启用pin_memory加速GPU传输
     )
     
     val_loader = DataLoader(
         val_dataset,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=num_workers,
-        pin_memory=False
+        num_workers=4,
+        pin_memory=True
     )
     
     test_loader = DataLoader(
         test_dataset,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=num_workers,
-        pin_memory=False
+        num_workers=4,
+        pin_memory=True
     )
     
     logger.info(f"DataLoaders created: Train batches={len(train_loader)}, "
