@@ -445,7 +445,7 @@ btcquant/
 
 ## 🎯 使用场景
 
-### 场景1：数据服务器（你的服务器 47.236.94.252）
+### 场景1：数据服务器
 ```bash
 # 启动数据服务
 ./deploy.sh data
@@ -533,7 +533,6 @@ MIT License
 ## 📞 联系方式
 
 - GitHub: https://github.com/ningersweet/btcquant
-- 服务器: 47.236.94.252
 
 ---
 

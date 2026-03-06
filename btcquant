@@ -8,9 +8,8 @@ VERSION="1.0.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 服务器配置
-CPU_SERVER="${CPU_SERVER:-root@47.236.94.252}"
+CPU_SERVER="${CPU_SERVER:_cpu_server}"
 GPU_SERVER="${GPU_SERVER:-gpu_server}"
-CPU_SERVER_IP="47.236.94.252"
 PROJECT_DIR="/root/workspace/btcquant"
 GIT_REPO="https://github.com/ningersweet/btcquant.git"
 
