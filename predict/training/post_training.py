@@ -18,6 +18,10 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 import argparse
 
+# 添加项目路径
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from config import Config
+
 
 def get_latest_model_dir(models_dir: Path) -> Path:
     """获取最新的模型目录"""
@@ -224,18 +228,22 @@ def main():
     parser = argparse.ArgumentParser(description='训练完成后的自动化处理')
     parser.add_argument('--model-dir', type=str, help='模型目录路径（留空则自动检测最新）')
     parser.add_argument('--cpu-server', type=str, default='cpu_server', help='CPU服务器SSH别名')
-    parser.add_argument('--remote-path', type=str, default='/root/workspace/btcquant/predict/models', 
+    parser.add_argument('--remote-path', type=str, default='/root/workspace/btcquant/storage/models', 
                         help='CPU服务器上的模型存储路径')
     parser.add_argument('--skip-transfer', action='store_true', help='跳过模型传输')
     parser.add_argument('--skip-email', action='store_true', help='跳过邮件通知')
     
     args = parser.parse_args()
     
+    # 加载配置
+    config = Config()
+    
     # 获取模型目录
     if args.model_dir:
         model_dir = Path(args.model_dir)
     else:
-        models_dir = Path(__file__).parent / 'models'
+        # 使用统一的models目录
+        models_dir = config.models_directory
         model_dir = get_latest_model_dir(models_dir)
     
     print(f"处理模型: {model_dir}")
@@ -262,22 +270,25 @@ def main():
     if not args.skip_email:
         print("\n" + "="*50)
         
-        # 从环境变量读取SMTP配置
+        # 从config.yaml读取SMTP配置（优先环境变量）
         smtp_config = {
-            'smtp_server': os.getenv('SMTP_SERVER', 'smtp.gmail.com'),
-            'smtp_port': int(os.getenv('SMTP_PORT', '587')),
-            'smtp_user': os.getenv('SMTP_USER'),
-            'smtp_password': os.getenv('SMTP_PASSWORD'),
-            'from_email': os.getenv('FROM_EMAIL', os.getenv('SMTP_USER')),
-            'to_email': os.getenv('TO_EMAIL', os.getenv('SMTP_USER')),
-            'use_tls': os.getenv('SMTP_USE_TLS', 'true').lower() == 'true'
+            'smtp_server': config.smtp_server,
+            'smtp_port': config.smtp_port,
+            'smtp_user': config.smtp_user,
+            'smtp_password': config.smtp_password,
+            'from_email': config.from_email,
+            'to_email': config.to_email,
+            'use_tls': config.smtp_use_tls
         }
         
         # 检查必需的配置
         if not smtp_config['smtp_user'] or not smtp_config['smtp_password']:
             print("⚠️ 未配置SMTP信息，跳过邮件发送")
-            print("请设置环境变量: SMTP_USER, SMTP_PASSWORD, TO_EMAIL")
+            print("请在 config.yaml 中配置邮件信息，或设置环境变量:")
+            print("  SMTP_USER, SMTP_PASSWORD, TO_EMAIL")
         else:
+            print(f"邮件配置: {smtp_config['smtp_server']}:{smtp_config['smtp_port']}")
+            print(f"发送至: {smtp_config['to_email']}")
             send_email_notification(summary, transfer_success, smtp_config)
     else:
         print("\n跳过邮件通知")

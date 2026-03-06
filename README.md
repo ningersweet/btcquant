@@ -215,40 +215,50 @@ btc_quant/
 复制配置文件并修改：
 
 ```bash
-# 预测服务配置
-cp predict/config.yaml.example predict/config.yaml
-vim predict/config.yaml
-
-# 根目录配置（可选）
+# 根目录配置
 cp config.yaml.example config.yaml
 vim config.yaml
 ```
 
+**⚠️ 重要：配置管理规则**
+
+- ✅ `config.yaml` 以本地环境为准
+- ✅ 修改后通过 `btcquant train sync-config` 同步到服务器
+- ❌ 禁止直接在服务器上修改配置
+- ❌ 禁止提交 `config.yaml` 到 Git
+
+详细规则：[配置管理快速参考](docs/配置管理快速参考.md)
+
 ### 邮件通知配置
 
-邮件配置通过环境变量设置：
+训练完成后自动发送邮件通知。配置方式（优先级从高到低）：
+
+**方式1：在 config.yaml 中配置（推荐）**
+
+```yaml
+notification:
+  email:
+    enabled: true
+    smtp_server: "smtp.gmail.com"
+    smtp_port: 587
+    smtp_use_tls: true
+    smtp_user: "your_email@gmail.com"
+    smtp_password: "your_app_password"  # Gmail需要应用专用密码
+    to_email: "your_email@gmail.com"
+```
+
+**方式2：使用环境变量（覆盖config.yaml）**
 
 ```bash
-# 设置环境变量
-export SMTP_SERVER=smtp.gmail.com
-export SMTP_PORT=587
 export SMTP_USER=your_email@gmail.com
 export SMTP_PASSWORD=your_app_password
 export TO_EMAIL=your_email@gmail.com
-
-# 或者在GPU服务器上
-cd predict
-cat > .env.email << EOF
-SMTP_SERVER=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your_email@gmail.com
-SMTP_PASSWORD=your_app_password
-TO_EMAIL=your_email@gmail.com
-EOF
-
-# 加载环境变量
-export $(cat .env.email | xargs)
 ```
+
+**常见邮箱配置：**
+- **Gmail**: smtp.gmail.com:587，需要[应用专用密码](https://myaccount.google.com/apppasswords)
+- **QQ邮箱**: smtp.qq.com:587，需要授权码
+- **163邮箱**: smtp.163.com:465，smtp_use_tls=false
 
 ### 主要配置项
 

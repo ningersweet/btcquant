@@ -308,6 +308,12 @@ btcquant server shell gpu
    - 修改 `config.yaml` 后需要重新同步到GPU服务器
    - 使用 `btcquant train sync-config`
 
-4. **废弃命令**:
+4. **邮件通知配置**:
+   - 在 `config.yaml` 中配置邮件信息（推荐）
+   - 或使用环境变量 `SMTP_USER`, `SMTP_PASSWORD`, `TO_EMAIL`
+   - 环境变量优先级高于配置文件
+   - 训练完成后自动发送邮件通知
+
+5. **废弃命令**:
    - `btcquant gpu train/sync-*` 已废弃
    - 使用 `btcquant train` 系列命令代替

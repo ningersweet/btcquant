@@ -41,6 +41,26 @@ config.yaml.example      # 配置示例（提交Git）
 环境变量 > config.yaml > 默认值
 ```
 
+### 配置管理原则 ⭐
+
+**config.yaml 以本地环境为准，统一管理，单向同步到服务器。**
+
+```
+本地开发环境（主配置）
+    ↓ scp 同步
+CPU服务器（副本）
+    ↓ scp 同步
+GPU服务器（副本）
+```
+
+**核心规则：**
+- ✅ 所有配置修改在本地完成
+- ✅ 修改后同步到服务器
+- ❌ 禁止直接在服务器上修改配置
+- ❌ 禁止从服务器复制配置到本地
+
+详细规则参见：`.cursor/rules/config-management.md`
+
 ### 首次配置
 
 ```bash
@@ -291,12 +311,37 @@ config.yaml          # 配置文件
 storage/logs/*.log   # 日志文件
 ```
 
-**使用环境变量：**
+**邮件配置方式（优先级从高到低）：**
+
+1. **环境变量（最高优先级）**
 ```bash
-# 邮件配置
-export SMTP_SERVER=smtp.gmail.com
 export SMTP_USER=your_email@gmail.com
 export SMTP_PASSWORD=your_app_password
+export TO_EMAIL=recipient@example.com
+```
+
+2. **config.yaml 配置文件（推荐）**
+```yaml
+notification:
+  email:
+    enabled: true
+    smtp_server: "smtp.gmail.com"
+    smtp_port: 587
+    smtp_use_tls: true
+    smtp_user: "your_email@gmail.com"
+    smtp_password: "your_app_password"
+    to_email: "your_email@gmail.com"
+```
+
+**测试邮件配置：**
+```bash
+python predict/scripts/test_email.py
+```
+
+**常见邮箱配置：**
+- **Gmail**: smtp.gmail.com:587，需要[应用专用密码](https://myaccount.google.com/apppasswords)
+- **QQ邮箱**: smtp.qq.com:587，需要授权码
+- **163邮箱**: smtp.163.com:465，smtp_use_tls=false，需要授权码
 
 # Binance API
 export BINANCE_API_KEY=your_api_key
