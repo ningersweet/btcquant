@@ -224,6 +224,11 @@ def main():
         
         df, train_df, val_df, test_df = load_data_from_cache(cache_file)
         
+        # 检查是否需要生成标签
+        if 'y_dir' not in df.columns:
+            logger.info("缓存数据中没有标签，开始生成标签...")
+            df = generate_labels(df, config)
+        
         # 如果缓存中没有划分好的数据集，则重新划分
         if train_df is None:
             logger.info("缓存中没有划分好的数据集，重新划分...")
