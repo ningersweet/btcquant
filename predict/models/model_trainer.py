@@ -71,8 +71,7 @@ class ModelTrainer:
             self.optimizer,
             mode='min',
             factor=0.5,
-            patience=5,
-            verbose=True
+            patience=5
         )
         
         # 训练历史
