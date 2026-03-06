@@ -749,6 +749,9 @@ cmd_gpu() {
             print_info "建议使用新命令: btcquant train <action>"
             exit 1
             ;;
+    esac
+}
+
 # 初始化GPU环境
 gpu_setup() {
     print_header "初始化GPU环境"
@@ -822,8 +825,6 @@ echo "1. 同步配置文件: btcquant train sync-config"
 echo "2. 同步训练数据: btcquant train sync-data"
 echo "3. 启动训练: btcquant train start --gpu"
 EOF
-    print_success "GPU环境初始化完成"
-}
     print_success "GPU环境初始化完成"
 }
 

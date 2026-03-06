@@ -112,7 +112,7 @@ def train_model(train_df, val_df, test_df, config: Config, model_dir: Path, base
     # 创建模型
     model = TCNModel(
         input_dim=config.model_input_dim,
-        num_channels=config.model_channels,
+        channels=config.model_channels,
         num_layers=config.model_num_layers,
         kernel_size=config.model_kernel_size,
         dropout=config.model_dropout
