@@ -27,19 +27,25 @@ class ConfigLoader:
     
     def _find_config_file(self) -> Path:
         """查找配置文件"""
+        # 环境变量指定的路径
+        env_path = os.getenv("CONFIG_PATH", "")
+        if env_path and Path(env_path).exists():
+            return Path(env_path)
+        
+        # 搜索路径列表
         search_paths = [
-            Path(os.getenv("CONFIG_PATH", "")),
             Path.cwd() / "config.yaml",
+            Path(__file__).parent.parent / "config.yaml",  # 项目根目录
             Path.cwd().parent / "config.yaml",
             Path("/app/config.yaml"),
-            Path(__file__).parent / "config.yaml",
         ]
         
         for path in search_paths:
-            if path.exists():
+            if path.exists() and path.is_file():
                 return path
         
-        return Path.cwd() / "config.yaml"
+        # 默认返回项目根目录的 config.yaml（即使不存在）
+        return Path(__file__).parent.parent / "config.yaml"
     
     def _load_config(self) -> None:
         """加载配置文件"""

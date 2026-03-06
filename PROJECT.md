@@ -108,27 +108,31 @@ btcquant train start --gpu
 
 ```bash
 # ✅ 推荐
-btcquant train start --gpu
-btcquant data prepare
+btcquant gpu setup              # GPU环境初始化
+btcquant train start --gpu      # GPU训练
+btcquant data prepare           # 准备数据
 
-# ❌ 不推荐
+# ❌ 不推荐（已删除）
 ./deploy_gpu_training.sh
 ./prepare_data.sh
 ```
 
 ### 训练脚本
 
-**使用统一的 train.py：**
+**使用统一的训练脚本：**
 
 ```bash
-# ✅ 推荐
-python train.py --mode cache
-python train.py --mode full
-python train.py --mode incremental --base-model path/to/model.pt
+# GPU训练（自动使用 train_with_notification.py）
+btcquant train start --gpu
 
-# ❌ 不推荐（已废弃）
-python train_cached.py
-python train_fast.py
+# 本地训练
+cd predict/training
+python train.py --mode cache
+
+# 训练流程：
+# 1. train_with_notification.py 启动
+# 2. 调用 train.py 进行训练
+# 3. 调用 post_training.py 传输模型和发送邮件
 ```
 
 ### Python代码规范
@@ -219,6 +223,9 @@ btcquant server update gpu
 ### GPU训练流程
 
 ```bash
+# 0. 首次使用：初始化GPU环境
+btcquant gpu setup
+
 # 1. 准备数据（CPU服务器）
 btcquant data prepare
 
@@ -226,7 +233,7 @@ btcquant data prepare
 btcquant train sync-config
 btcquant train sync-data
 
-# 3. 启动训练
+# 3. 启动训练（自动使用 train_with_notification.py）
 btcquant train start --gpu
 
 # 4. 监控训练
@@ -234,7 +241,7 @@ btcquant train status
 btcquant train logs
 
 # 5. 训练完成后自动：
-#    - 传输模型到CPU服务器
+#    - 传输模型到CPU服务器（post_training.py）
 #    - 发送邮件通知
 ```
 

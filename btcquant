@@ -82,25 +82,24 @@ BTC Quant 统一命令行工具 v${VERSION}
   train sync-model               同步模型到CPU服务器
   train sync-config              同步配置文件到GPU服务器
 
+GPU管理:
+  gpu setup                      初始化GPU环境（Python 3.11 + PyTorch GPU）
+
 本地开发:
-  local train                    本地训练（快速模式）
   local test                     运行测试
   local lint                     代码检查
 
 工具:
   git push                       提交并推送代码
-  git deploy <cpu|gpu>           Git部署到服务器
-  fix deploy                     修复并部署
   version                        显示版本信息
   help                           显示此帮助信息
 
 示例:
-  btcquant server init cpu       # 首次部署到CPU服务器
+  btcquant gpu setup             # 首次使用GPU前必须执行
   btcquant data prepare          # 准备训练数据
   btcquant train start --gpu     # 启动GPU训练
   btcquant train logs            # 查看训练日志
   btcquant docker monitor        # 监控容器资源
-  btcquant server logs cpu data-service  # 查看数据服务日志
 
 EOF
 }
@@ -726,26 +725,43 @@ train_sync_config() {
     print_success "配置文件同步完成"
 }
 
-# GPU训练命令（保留向后兼容）
+# GPU管理命令
 cmd_gpu() {
     local action=$1
     
     case $action in
         setup)
+            # setup命令保留，功能完整
             gpu_setup
             ;;
-        train)
-            train_start --gpu
-            ;;
-        sync-data)
-            train_sync_data
-            ;;
-        sync-model)
-            train_sync_model "$2"
+        train|sync-data|sync-model)
+            # 这些命令已废弃，提示使用新命令
+            print_warning "⚠️  'btcquant gpu $action' 已废弃"
+            print_info ""
+            print_info "请使用以下新命令："
+            case $action in
+                train)
+                    print_info "  btcquant train start --gpu"
+                    ;;
+                sync-data)
+                    print_info "  btcquant train sync-data"
+                    ;;
+                sync-model)
+                    print_info "  btcquant train sync-model"
+                    ;;
+            esac
+            exit 1
             ;;
         *)
             print_error "未知GPU命令: $action"
-            print_info "建议使用新命令: btcquant train <action>"
+            print_info ""
+            print_info "可用命令："
+            print_info "  btcquant gpu setup           # GPU环境初始化"
+            print_info ""
+            print_info "训练相关命令请使用："
+            print_info "  btcquant train start --gpu   # 启动GPU训练"
+            print_info "  btcquant train sync-data     # 同步数据"
+            print_info "  btcquant train sync-model    # 同步模型"
             exit 1
             ;;
     esac
@@ -832,9 +848,6 @@ cmd_local() {
     local action=$1
     
     case $action in
-        train)
-            local_train
-            ;;
         test)
             local_test
             ;;
@@ -843,16 +856,12 @@ cmd_local() {
             ;;
         *)
             print_error "未知本地命令: $action"
+            print_info "可用命令："
+            print_info "  btcquant local test    # 运行测试"
+            print_info "  btcquant local lint    # 代码检查"
             exit 1
             ;;
     esac
-}
-
-# 本地训练
-local_train() {
-    print_header "本地快速训练"
-    cd "$SCRIPT_DIR/predict"
-    python train_fast.py
 }
 
 # 运行测试
@@ -877,11 +886,10 @@ cmd_git() {
         push)
             git_push
             ;;
-        deploy)
-            git_deploy $2
-            ;;
         *)
             print_error "未知Git命令: $action"
+            print_info "可用命令："
+            print_info "  btcquant git push    # 提交并推送代码"
             exit 1
             ;;
     esac
@@ -899,42 +907,6 @@ git_push() {
     git push origin main
     
     print_success "代码已推送"
-}
-
-# Git部署
-git_deploy() {
-    local target=$1
-    if [ -f "$SCRIPT_DIR/git_deploy.sh" ]; then
-        "$SCRIPT_DIR/git_deploy.sh" $target
-    else
-        print_error "git_deploy.sh 不存在"
-        exit 1
-    fi
-}
-
-# 修复并部署
-cmd_fix() {
-    local action=$1
-    
-    case $action in
-        deploy)
-            fix_deploy
-            ;;
-        *)
-            print_error "未知修复命令: $action"
-            exit 1
-            ;;
-    esac
-}
-
-# 修复并部署
-fix_deploy() {
-    if [ -f "$SCRIPT_DIR/fix_and_deploy.sh" ]; then
-        "$SCRIPT_DIR/fix_and_deploy.sh"
-    else
-        print_error "fix_and_deploy.sh 不存在"
-        exit 1
-    fi
 }
 
 # 显示版本信息
@@ -974,9 +946,6 @@ main() {
             ;;
         git)
             cmd_git "$@"
-            ;;
-        fix)
-            cmd_fix "$@"
             ;;
         version)
             show_version

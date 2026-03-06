@@ -145,32 +145,51 @@ btcquant train sync-model
 
 ---
 
-### 5. GPU管理 (gpu) ⚠️ 已废弃
-**用途**: GPU环境初始化（建议使用新命令）
+### 5. GPU管理 (gpu)
+**用途**: GPU环境初始化
 
 ```bash
-# GPU环境初始化（推荐使用）
-btcquant gpu setup            # 安装Python 3.11、PyTorch GPU、项目依赖
-
-# 以下命令已废弃，使用train命令代替
-btcquant gpu train            # 废弃，使用: btcquant train start --gpu
-btcquant gpu sync-data        # 废弃，使用: btcquant train sync-data
-btcquant gpu sync-model       # 废弃，使用: btcquant train sync-model
+# GPU环境初始化（首次使用必须执行）
+btcquant gpu setup
 ```
 
+**功能说明**：
+- 安装 Git（如果不存在）
+- 安装 Python 3.11（如果不存在）
+- 克隆或更新项目代码
+- 创建 Python 3.11 虚拟环境
+- 安装 PyTorch GPU 版本（CUDA 11.8）
+- 安装项目依赖
+- 创建存储目录
+- 验证 GPU 可用性
+
 **使用场景**:
-- 首次在GPU服务器上初始化环境
-- 重新安装Python或PyTorch环境
+- 首次在GPU服务器上训练（必须执行）
+- 重新安装环境
+- 环境损坏需要重建
+
+**完整的首次部署流程**：
+```bash
+# 1. 初始化GPU环境
+btcquant gpu setup
+
+# 2. 在CPU服务器准备数据
+btcquant data prepare
+
+# 3. 同步配置和数据
+btcquant train sync-config
+btcquant train sync-data
+
+# 4. 启动训练
+btcquant train start --gpu
+```
 
 ---
 
 ### 6. 本地开发 (local)
-**用途**: 本地快速开发和测试
+**用途**: 本地开发和测试
 
 ```bash
-# 本地快速训练
-btcquant local train          # 使用小数据集快速训练测试
-
 # 运行测试
 btcquant local test           # 运行单元测试
 
@@ -179,7 +198,6 @@ btcquant local lint           # 运行代码风格检查
 ```
 
 **使用场景**:
-- 开发新功能时快速验证
 - 运行单元测试
 - 代码提交前检查
 
@@ -191,15 +209,10 @@ btcquant local lint           # 运行代码风格检查
 ```bash
 # 提交并推送代码
 btcquant git push             # 交互式提交并推送
-
-# Git部署到服务器
-btcquant git deploy cpu       # 部署到CPU服务器
-btcquant git deploy gpu       # 部署到GPU服务器
 ```
 
 **使用场景**:
-- 快速提交代码
-- 部署代码到服务器
+- 快速提交代码到远程仓库
 
 ---
 

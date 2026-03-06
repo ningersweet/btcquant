@@ -1,44 +1,27 @@
 """
 预测服务配置模块
 
-统一使用YAML配置文件
+基于 common/config_loader 的配置访问接口
 """
 
 import os
-import yaml
+import sys
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any
+
+# 添加项目根目录到路径
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from common.config_loader import get_config, get_section
 
 
 class Config:
-    """统一配置类"""
+    """预测服务配置类（基于 common/config_loader）"""
     
-    def __init__(self, config_file: Optional[str] = None):
-        """
-        初始化配置
-        
-        Args:
-            config_file: 配置文件路径，默认为根目录的 config.yaml
-        """
+    def __init__(self):
+        """初始化配置"""
         self.config_dir = Path(__file__).parent
         self.project_root = self.config_dir.parent
-        
-        # 默认使用根目录的config.yaml
-        if config_file:
-            self.config_file = Path(config_file)
-        else:
-            # 优先使用根目录的config.yaml
-            root_config = self.project_root / 'config.yaml'
-            if root_config.exists():
-                self.config_file = root_config
-            else:
-                # 尝试使用示例配置
-                example_config = self.project_root / 'config.yaml.example'
-                if example_config.exists():
-                    self.config_file = example_config
-                else:
-                    # 最后尝试predict目录
-                    self.config_file = self.config_dir / 'config.yaml'
         
         # 统一存储目录
         self.storage_dir = self.project_root / 'storage'
@@ -50,294 +33,196 @@ class Config:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.models_dir.mkdir(parents=True, exist_ok=True)
-        
-        # 默认配置
-        self._config = self._get_default_config()
-        
-        # 加载配置文件
-        if self.config_file.exists():
-            self.load_from_file(self.config_file)
-    
-    def _get_default_config(self) -> Dict[str, Any]:
-        """获取默认配置"""
-        import torch
-        
-        return {
-            'predict': {
-                'label': {
-                    'alpha': 0.0015,
-                    'gamma': 0.0040,
-                    'beta': 0.0025,
-                    'theta_min': 0.0100,
-                    'K': 12
-                },
-                'data': {
-                    'window_size': 288,
-                    'interval': '5m',
-                    'start_date': '2019-01-01',
-                    'end_date': '',
-                    'train_ratio': 0.7,
-                    'val_ratio': 0.15,
-                    'test_ratio': 0.15
-                },
-                'model': {
-                    'input_dim': 5,
-                    'channels': 64,
-                    'num_layers': 8,
-                    'kernel_size': 3,
-                    'dropout': 0.2
-                },
-                'training': {
-                    'batch_size': 128,
-                    'learning_rate': 0.001,
-                    'epochs': 100,
-                    'early_stopping_patience': 15,
-                    'lambda_cls': 1.0,
-                    'lambda_reg': 0.5,
-                    'device': 'cuda' if torch.cuda.is_available() else 'cpu'
-                },
-                'inference': {
-                    'min_confidence': 0.65,
-                    'min_space': 0.01
-                },
-                'data_service_url': 'http://localhost:8001',
-                'features_service_url': 'http://localhost:8002'
-            },
-            'data': {
-                'symbol': 'BTCUSDT',
-                'interval': '5m'
-            }
-        }
-    
-    def load_from_file(self, config_file: str):
-        """
-        从YAML文件加载配置
-        
-        Args:
-            config_file: 配置文件路径
-        """
-        config_path = Path(config_file)
-        if not config_path.exists():
-            raise FileNotFoundError(f"配置文件不存在: {config_file}")
-        
-        with open(config_path, 'r', encoding='utf-8') as f:
-            loaded_config = yaml.safe_load(f)
-        
-        # 深度合并配置
-        self._config = self._deep_merge(self._config, loaded_config)
-    
-    def _deep_merge(self, base: Dict, update: Dict) -> Dict:
-        """深度合并字典"""
-        result = base.copy()
-        for key, value in update.items():
-            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-                result[key] = self._deep_merge(result[key], value)
-            else:
-                result[key] = value
-        return result
-    
-    def save_to_file(self, config_file: Optional[str] = None):
-        """
-        保存配置到YAML文件
-        
-        Args:
-            config_file: 配置文件路径，默认使用初始化时的路径
-        """
-        save_path = Path(config_file) if config_file else self.config_file
-        
-        with open(save_path, 'w', encoding='utf-8') as f:
-            yaml.dump(self._config, f, default_flow_style=False, allow_unicode=True)
     
     # 标签生成配置
     @property
     def label_alpha(self) -> float:
-        return self._config['predict']['label']['alpha']
+        return get_config('predict.label.alpha', 0.0015)
     
     @property
     def label_gamma(self) -> float:
-        return self._config['predict']['label']['gamma']
+        return get_config('predict.label.gamma', 0.0040)
     
     @property
     def label_beta(self) -> float:
-        return self._config['predict']['label']['beta']
+        return get_config('predict.label.beta', 0.0025)
     
     @property
     def label_theta_min(self) -> float:
-        return self._config['predict']['label']['theta_min']
+        return get_config('predict.label.theta_min', 0.0100)
     
     @property
     def label_K(self) -> int:
-        return self._config['predict']['label']['K']
+        return get_config('predict.label.K', 12)
     
     # 数据配置
     @property
     def data_window_size(self) -> int:
-        return self._config['predict']['data']['window_size']
+        return get_config('predict.data.window_size', 288)
     
     @property
     def data_interval(self) -> str:
-        return self._config['predict']['data']['interval']
+        return get_config('predict.data.interval', '5m')
     
     @property
     def data_start_date(self) -> str:
-        return self._config['predict']['data']['start_date']
+        return get_config('predict.data.start_date', '2019-01-01')
     
     @property
     def data_end_date(self) -> str:
-        return self._config['predict']['data']['end_date']
+        return get_config('predict.data.end_date', '')
     
     @property
     def data_train_ratio(self) -> float:
-        return self._config['predict']['data']['train_ratio']
+        return get_config('predict.data.train_ratio', 0.7)
     
     @property
     def data_val_ratio(self) -> float:
-        return self._config['predict']['data']['val_ratio']
+        return get_config('predict.data.val_ratio', 0.15)
     
     @property
     def data_test_ratio(self) -> float:
-        return self._config['predict']['data']['test_ratio']
+        return get_config('predict.data.test_ratio', 0.15)
     
     # 模型配置
     @property
     def model_input_dim(self) -> int:
-        return self._config['predict']['model']['input_dim']
+        return get_config('predict.model.input_dim', 5)
     
     @property
     def model_channels(self) -> int:
-        return self._config['predict']['model']['channels']
+        return get_config('predict.model.channels', 64)
     
     @property
     def model_num_layers(self) -> int:
-        return self._config['predict']['model']['num_layers']
+        return get_config('predict.model.num_layers', 8)
     
     @property
     def model_kernel_size(self) -> int:
-        return self._config['predict']['model']['kernel_size']
+        return get_config('predict.model.kernel_size', 3)
     
     @property
     def model_dropout(self) -> float:
-        return self._config['predict']['model']['dropout']
+        return get_config('predict.model.dropout', 0.2)
     
     # 训练配置
     @property
     def train_batch_size(self) -> int:
-        return self._config['predict']['training']['batch_size']
+        return get_config('predict.training.batch_size', 128)
     
     @property
     def train_learning_rate(self) -> float:
-        return self._config['predict']['training']['learning_rate']
+        return get_config('predict.training.learning_rate', 0.001)
     
     @property
     def train_epochs(self) -> int:
-        return self._config['predict']['training']['epochs']
+        return get_config('predict.training.epochs', 100)
     
     @property
     def train_early_stopping_patience(self) -> int:
-        return self._config['predict']['training']['early_stopping_patience']
+        return get_config('predict.training.early_stopping_patience', 15)
     
     @property
     def train_lambda_cls(self) -> float:
-        return self._config['predict']['training']['lambda_cls']
+        return get_config('predict.training.lambda_cls', 1.0)
     
     @property
     def train_lambda_reg(self) -> float:
-        return self._config['predict']['training']['lambda_reg']
+        return get_config('predict.training.lambda_reg', 0.5)
     
     @property
     def train_device(self) -> str:
-        return self._config['predict']['training']['device']
+        import torch
+        default_device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        return get_config('predict.training.device', default_device)
     
     # 推理配置
     @property
     def inference_min_confidence(self) -> float:
-        return self._config['predict']['inference']['min_confidence']
+        return get_config('predict.inference.min_confidence', 0.65)
     
     @property
     def inference_min_space(self) -> float:
-        return self._config['predict']['inference']['min_space']
+        return get_config('predict.inference.min_space', 0.01)
     
     # 服务配置
     @property
     def data_service_url(self) -> str:
-        return self._config['predict']['data_service_url']
+        return get_config('predict.data_service_url', 'http://localhost:8001')
     
     @property
     def features_service_url(self) -> str:
-        return self._config['predict']['features_service_url']
+        return get_config('predict.features_service_url', 'http://localhost:8002')
     
     @property
     def symbol(self) -> str:
-        return self._config['data']['symbol']
+        return get_config('data.symbol', 'BTCUSDT')
     
-    # 邮件配置（优先环境变量，然后配置文件）
+    # 邮件配置（优先环境变量）
     @property
     def notification_enabled(self) -> bool:
-        return self.get('notification.email.enabled', False)
+        return get_config('notification.email.enabled', False)
     
     @property
     def smtp_server(self) -> str:
-        return os.getenv('SMTP_SERVER', self.get('notification.email.smtp_server', 'smtp.gmail.com'))
+        return get_config('notification.email.smtp_server', 'smtp.gmail.com')
     
     @property
     def smtp_port(self) -> int:
-        port = os.getenv('SMTP_PORT', self.get('notification.email.smtp_port', 587))
-        return int(port)
+        return get_config('notification.email.smtp_port', 587)
     
     @property
     def smtp_use_tls(self) -> bool:
-        use_tls = os.getenv('SMTP_USE_TLS', self.get('notification.email.smtp_use_tls', True))
-        return str(use_tls).lower() in ('true', '1', 'yes')
+        return get_config('notification.email.smtp_use_tls', True)
     
     @property
     def smtp_user(self) -> str:
-        return os.getenv('SMTP_USER', self.get('notification.email.smtp_user', ''))
+        return get_config('notification.email.smtp_user', '')
     
     @property
     def smtp_password(self) -> str:
-        return os.getenv('SMTP_PASSWORD', self.get('notification.email.smtp_password', ''))
+        return get_config('notification.email.smtp_password', '')
     
     @property
     def from_email(self) -> str:
-        return os.getenv('FROM_EMAIL', self.get('notification.email.from_email', self.smtp_user))
+        return get_config('notification.email.from_email', self.smtp_user)
     
     @property
     def to_email(self) -> str:
-        return os.getenv('TO_EMAIL', self.get('notification.email.to_email', self.smtp_user))
+        return get_config('notification.email.to_email', self.smtp_user)
     
     # 交易配置
     @property
     def trading_mode(self) -> str:
-        return os.getenv('MODE', self.get('trading.mode', 'backtest'))
+        return get_config('trading.mode', 'backtest')
     
     @property
     def binance_api_key(self) -> str:
-        return os.getenv('BINANCE_API_KEY', self.get('trading.binance.api_key', ''))
+        return get_config('trading.binance.api_key', '')
     
     @property
     def binance_api_secret(self) -> str:
-        return os.getenv('BINANCE_API_SECRET', self.get('trading.binance.api_secret', ''))
+        return get_config('trading.binance.api_secret', '')
     
     @property
     def use_testnet(self) -> bool:
-        use_testnet = os.getenv('USE_TESTNET', self.get('trading.binance.use_testnet', False))
-        return str(use_testnet).lower() in ('true', '1', 'yes')
+        return get_config('trading.binance.use_testnet', False)
     
     @property
     def risk_amount(self) -> float:
-        return float(os.getenv('RISK_AMOUNT', self.get('trading.risk.risk_amount', 100)))
+        return get_config('trading.risk.risk_amount', 100.0)
     
     @property
     def min_rr_threshold(self) -> float:
-        return float(os.getenv('MIN_RR_THRESHOLD', self.get('trading.risk.min_rr_threshold', 1.5)))
+        return get_config('trading.risk.min_rr_threshold', 1.5)
     
     @property
     def leverage(self) -> int:
-        return int(os.getenv('LEVERAGE', self.get('trading.risk.leverage', 20)))
+        return get_config('trading.risk.leverage', 20)
     
     @property
     def log_level(self) -> str:
-        return os.getenv('LOG_LEVEL', self.get('trading.log_level', 'INFO'))
+        return get_config('trading.log_level', 'INFO')
     
     # 路径配置
     @property
@@ -378,43 +263,16 @@ class Config:
         Returns:
             配置值
         """
-        keys = key.split('.')
-        value = self._config
-        
-        for k in keys:
-            if isinstance(value, dict) and k in value:
-                value = value[k]
-            else:
-                return default
-        
-        return value
-    
-    def set(self, key: str, value: Any):
-        """
-        设置配置值（支持点号分隔的路径）
-        
-        Args:
-            key: 配置键，支持 'predict.label.alpha' 格式
-            value: 配置值
-        """
-        keys = key.split('.')
-        config = self._config
-        
-        for k in keys[:-1]:
-            if k not in config:
-                config[k] = {}
-            config = config[k]
-        
-        config[keys[-1]] = value
+        return get_config(key, default)
     
     def __repr__(self) -> str:
-        return f"Config(file={self.config_file})"
+        return f"Config(loader=common.config_loader)"
 
 
 # 全局配置实例（向后兼容）
 _global_config = None
 
-def get_config() -> Config:
+def get_config_instance() -> Config:
     """获取全局配置实例"""
     global _global_config
     if _global_config is None:
@@ -426,7 +284,7 @@ def get_config() -> Config:
 class LabelConfig:
     """标签生成配置（向后兼容）"""
     def __init__(self):
-        self._config = get_config()
+        self._config = get_config_instance()
     
     @property
     def ALPHA(self): return self._config.label_alpha
@@ -447,7 +305,7 @@ class LabelConfig:
 class DataConfig:
     """数据配置（向后兼容）"""
     def __init__(self):
-        self._config = get_config()
+        self._config = get_config_instance()
     
     @property
     def WINDOW_SIZE(self): return self._config.data_window_size
@@ -474,7 +332,7 @@ class DataConfig:
 class ModelConfig:
     """模型配置（向后兼容）"""
     def __init__(self):
-        self._config = get_config()
+        self._config = get_config_instance()
     
     @property
     def INPUT_DIM(self): return self._config.model_input_dim
@@ -495,7 +353,7 @@ class ModelConfig:
 class TrainConfig:
     """训练配置（向后兼容）"""
     def __init__(self):
-        self._config = get_config()
+        self._config = get_config_instance()
     
     @property
     def BATCH_SIZE(self): return self._config.train_batch_size
@@ -522,7 +380,7 @@ class TrainConfig:
 class InferenceConfig:
     """推理配置（向后兼容）"""
     def __init__(self):
-        self._config = get_config()
+        self._config = get_config_instance()
     
     @property
     def MIN_CONFIDENCE(self): return self._config.inference_min_confidence
@@ -534,7 +392,7 @@ class InferenceConfig:
 class ServiceConfig:
     """服务配置（向后兼容）"""
     def __init__(self):
-        self._config = get_config()
+        self._config = get_config_instance()
         self.MODEL_DIR = Path(__file__).parent / 'models'
         self.MODEL_DIR.mkdir(exist_ok=True)
     

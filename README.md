@@ -103,10 +103,11 @@ cd predict
 pip install -r requirements.txt
 
 # 本地训练（使用缓存数据）
+cd training
 python train.py --mode cache
 
 # 查看训练日志
-tail -f logs/training.log
+tail -f ../storage/logs/training.log
 ```
 
 ## 📖 文档
@@ -154,6 +155,7 @@ btcquant data status              # 查看数据服务状态
 ### 训练管理
 
 ```bash
+btcquant gpu setup                # 初始化GPU环境（首次必须）
 btcquant train start --gpu        # 启动GPU训练
 btcquant train status             # 查看训练状态
 btcquant train logs               # 查看训练日志
@@ -231,9 +233,9 @@ vim config.yaml
 
 ### 邮件通知配置
 
-训练完成后自动发送邮件通知。配置方式（优先级从高到低）：
+训练完成后自动发送邮件通知。
 
-**方式1：在 config.yaml 中配置（推荐）**
+**在 config.yaml 中配置（推荐）**：
 
 ```yaml
 notification:
@@ -241,24 +243,11 @@ notification:
     enabled: true
     smtp_server: "smtp.gmail.com"
     smtp_port: 587
-    smtp_use_tls: true
     smtp_user: "your_email@gmail.com"
-    smtp_password: "your_app_password"  # Gmail需要应用专用密码
-    to_email: "your_email@gmail.com"
+    smtp_password: "your_app_password"
 ```
 
-**方式2：使用环境变量（覆盖config.yaml）**
-
-```bash
-export SMTP_USER=your_email@gmail.com
-export SMTP_PASSWORD=your_app_password
-export TO_EMAIL=your_email@gmail.com
-```
-
-**常见邮箱配置：**
-- **Gmail**: smtp.gmail.com:587，需要[应用专用密码](https://myaccount.google.com/apppasswords)
-- **QQ邮箱**: smtp.qq.com:587，需要授权码
-- **163邮箱**: smtp.163.com:465，smtp_use_tls=false
+详细配置说明和常见邮箱设置见 [config.yaml.example](config.yaml.example)
 
 ### 主要配置项
 
@@ -291,6 +280,7 @@ predict:
 使用预先准备的数据缓存，速度最快：
 
 ```bash
+cd training
 python train.py --mode cache
 ```
 
@@ -299,6 +289,7 @@ python train.py --mode cache
 从数据服务加载完整数据：
 
 ```bash
+cd training
 python train.py --mode full
 ```
 
@@ -307,7 +298,8 @@ python train.py --mode full
 在已有模型基础上继续训练：
 
 ```bash
-python train.py --mode incremental --base-model models/tcn_xxx/best_model.pt
+cd training
+python train.py --mode incremental --base-model ../storage/models/tcn_xxx/best_model.pt
 ```
 
 ## 📊 性能指标
@@ -327,7 +319,7 @@ python train.py --mode incremental --base-model models/tcn_xxx/best_model.pt
 
 ## 🤝 贡献
 
-欢迎提交Issue和Pull Request！
+欢迎提交Issue和Pull Request！详见 [贡献指南](CONTRIBUTING.md)
 
 ## 📄 许可证
 
@@ -335,7 +327,7 @@ MIT License
 
 ## 📮 联系方式
 
-- GitHub: [ningersweet/btcquant](https://github.com/ningersweet/btcquant)
+- GitHub: https://github.com/ningersweet/btcquant
 - Email: your_email@example.com
 
 ## 🙏 致谢
@@ -343,197 +335,7 @@ MIT License
 - Binance API
 - PyTorch
 - TCN论文作者
-./deploy.sh init
-```
-
-### 2. 启动数据服务
-
-```bash
-# 启动数据服务
-docker-compose up -d data-service
-
-# 准备训练数据
-./prepare_training_data.sh
-```
-
-### 3. 训练模型
-
-```bash
-# 快速训练（3个月数据，约11分钟）
-cd predict
-python train_fast.py
-
-# 完整训练（需要GPU，约30-60分钟）
-python train_cached.py
-```
-
-### 4. 启动推理服务
-
-```bash
-# 启动推理服务
-docker-compose up -d predict-service
-
-# 测试API
-curl http://localhost:8000/health
-```
-
-## 📚 文档导航
-
-### 核心文档
-- **[项目设计.md](./项目设计.md)** - 系统整体设计
-- **[DEPLOY_QUICKSTART.md](./DEPLOY_QUICKSTART.md)** - 快速部署指南 ⭐
-- **[GIT_DEPLOY_GUIDE.md](./GIT_DEPLOY_GUIDE.md)** - Git部署详细说明
-
-### 训练相关
-- **[GPU_TRAINING_GUIDE.md](./GPU_TRAINING_GUIDE.md)** - GPU训练完整指南
-- **[predict/TRAINING_REPORT.md](./predict/TRAINING_REPORT.md)** - 训练结果报告
-- **[predict/模型设计.md](./predict/模型设计.md)** - TCN模型设计
-- **[predict/特征工程.md](./predict/特征工程.md)** - 特征工程说明
-
-### 模块文档
-- **[data/README.md](./data/README.md)** - 数据服务说明
-- **[predict/README.md](./predict/README.md)** - 预测服务说明
-- **[features/README.md](./features/README.md)** - 特征工程说明
-- **[strategy/README.md](./strategy/README.md)** - 交易策略说明
-
-### 详细文档（docs/）
-- **[系统设计.md](./docs/系统设计.md)** - 系统架构设计
-- **[特征工程详细文档.md](./docs/特征工程详细文档.md)** - 特征工程详解
-- **[模型训练与评估详细文档.md](./docs/模型训练与评估详细文档.md)** - 训练评估详解
-- **[超参数优化指南.md](./docs/超参数优化指南.md)** - 超参数调优
-- **[部署指南.md](./docs/部署指南.md)** - 生产部署指南
-
-## 🛠️ 技术栈
-
-- **深度学习**: PyTorch, TCN
-- **数据处理**: Pandas, NumPy
-- **API服务**: FastAPI, Uvicorn
-- **数据存储**: SQLite
-- **容器化**: Docker, Docker Compose
-- **版本控制**: Git
-
-## 📦 项目结构
-
-```
-btcquant/
-├── data/                   # 数据服务
-│   ├── api.py             # API接口
-│   ├── service.py         # 数据服务
-│   ├── database.py        # 数据库操作
-│   └── fetcher.py         # 数据获取
-├── predict/               # 预测服务
-│   ├── src/              # 核心模块
-│   │   ├── tcn_model.py  # TCN模型
-│   │   ├── label_generator.py  # 标签生成
-│   │   ├── data_loader.py      # 数据加载
-│   │   ├── model_trainer.py    # 模型训练
-│   │   ├── backtest.py         # 回测引擎
-│   │   └── inference.py        # 推理服务
-│   ├── train_cached.py   # 缓存训练脚本
-│   ├── train_fast.py     # 快速训练脚本
-│   └── train_incremental.py  # 增量训练脚本
-├── features/              # 特征工程
-├── strategy/              # 交易策略
-├── evaluation/            # 评估模块
-├── common/                # 公共模块
-├── docs/                  # 详细文档
-├── deploy.sh             # 部署脚本
-├── prepare_training_data.sh  # 数据准备脚本
-├── setup_gpu_env.sh      # GPU环境初始化
-└── docker-compose.yml    # Docker配置
-```
-
-## 🎯 使用场景
-
-### 场景1：数据服务器
-```bash
-# 启动数据服务
-./deploy.sh data
-
-# 准备训练数据
-./deploy.sh prepare
-
-# 查看状态
-./deploy.sh status
-```
-
-### 场景2：GPU训练服务器
-```bash
-# 初始化GPU环境
-./setup_gpu_env.sh
-
-# 启动训练
-./deploy_gpu_training.sh
-
-# 监控训练
-tail -f predict/training_gpu.log
-```
-
-### 场景3：推理服务器
-```bash
-# 启动推理服务
-docker-compose up -d predict-service
-
-# 测试推理
-curl -X POST http://localhost:8000/api/v1/predict \
-  -H "Content-Type: application/json" \
-  -d '{"symbol": "BTCUSDT", "interval": "5m"}'
-```
-
-## 📊 训练结果
-
-- **验证集准确率**: 81.1%（快速训练，3个月数据）
-- **模型参数**: 40,518个（快速模型）/ 208,774个（完整模型）
-- **训练时间**: 11分钟（CPU，3个月数据）/ 30-60分钟（GPU，全量数据）
-
-## 🔧 常用命令
-
-```bash
-# 部署相关
-./deploy.sh init      # 首次部署
-./deploy.sh update    # 更新代码
-./deploy.sh data      # 启动数据服务
-./deploy.sh prepare   # 准备训练数据
-./deploy.sh status    # 查看状态
-
-# 训练相关
-cd predict
-python train_fast.py              # 快速训练
-python train_cached.py            # 完整训练
-python train_incremental.py       # 增量训练
-
-# 服务相关
-docker-compose up -d              # 启动所有服务
-docker-compose ps                 # 查看服务状态
-docker-compose logs -f            # 查看日志
-```
-
-## 💰 成本估算
-
-### 数据服务器（常驻）
-- 配置：2核4G
-- 成本：¥80/月
-
-### GPU训练服务器（按需）
-- 配置：T4 16GB（阿里云抢占式）
-- 成本：¥2-3/小时
-- 单次训练：¥1-2元
-
-### 总成本
-- 月度：¥88/月（每周训练1次）
-
-## 🤝 贡献
-
-欢迎提交Issue和Pull Request！
-
-## 📄 许可证
-
-MIT License
-
-## 📞 联系方式
-
-- GitHub: https://github.com/ningersweet/btcquant
 
 ---
 
-**快速开始：** `./deploy.sh init` 🚀
+**快速开始：** `btcquant help` 🚀
