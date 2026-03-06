@@ -124,11 +124,21 @@ def train_model(train_df, val_df, test_df, config: Config, model_dir: Path, base
         import torch
         model.load_state_dict(torch.load(base_model_path))
     
+    # 创建数据加载器
+    from data.data_loader import create_dataloaders
+    
+    train_loader, val_loader, test_loader = create_dataloaders(
+        train_df=train_df,
+        val_df=val_df,
+        test_df=test_df,
+        window_size=config.data_window_size,
+        batch_size=config.train_batch_size,
+        num_workers=0
+    )
+    
     # 创建训练器
     trainer = ModelTrainer(
         model=model,
-        window_size=config.data_window_size,
-        batch_size=config.train_batch_size,
         learning_rate=config.train_learning_rate,
         device=config.train_device,
         lambda_cls=config.train_lambda_cls,
@@ -137,8 +147,8 @@ def train_model(train_df, val_df, test_df, config: Config, model_dir: Path, base
     
     # 训练
     history = trainer.train(
-        train_df=train_df,
-        val_df=val_df,
+        train_loader=train_loader,
+        val_loader=val_loader,
         epochs=config.train_epochs,
         early_stopping_patience=config.train_early_stopping_patience,
         save_dir=model_dir
