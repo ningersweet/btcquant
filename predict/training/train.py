@@ -160,14 +160,17 @@ def train_model(train_df, val_df, test_df, config: Config, model_dir: Path, base
     if test_df is not None and len(test_df) > 0:
         logger.info("开始回测...")
         backtester = BacktestEngine(
-            model=model,
-            window_size=config.data_window_size,
-            device=config.train_device,
-            min_confidence=config.inference_min_confidence,
-            min_space=config.inference_min_space
+            initial_capital=10000.0,
+            leverage=20
         )
         
-        metrics = backtester.backtest(test_df)
+        metrics = backtester.run_backtest(
+            model=model,
+            test_data=test_df,
+            window_size=config.data_window_size,
+            min_confidence=0.65,
+            device=config.train_device
+        )
         
         # 保存回测结果
         import json
